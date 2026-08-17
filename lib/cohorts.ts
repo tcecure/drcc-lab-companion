@@ -52,6 +52,15 @@ export function getPodName(seatNumber: number) {
   return `student${String(seatNumber).padStart(2, "0")}`;
 }
 
+export function getLabIdentity(seatNumber: number) {
+  const studentAccount = getPodName(seatNumber);
+
+  return {
+    labUsername: studentAccount,
+    podName: studentAccount,
+  };
+}
+
 export async function assignUserToNextCohort(
   userId: string,
   actorId: string,
@@ -85,6 +94,7 @@ export async function assignUserToNextCohort(
     ) {
       if (!occupied.has(`${cohortNumber}:${seatNumber}`)) {
         const slot = getCohortSlot(cohortNumber, seatNumber);
+        const labIdentity = getLabIdentity(slot.seatNumber);
 
         if (
           new Date(slot.accessStartsAt) >
@@ -102,7 +112,8 @@ export async function assignUserToNextCohort(
             source: source as "csv_import" | "manual_entry" | "access_request",
             cohort_number: slot.cohortNumber,
             seat_number: slot.seatNumber,
-            pod_name: getPodName(slot.seatNumber),
+            lab_username: labIdentity.labUsername,
+            pod_name: labIdentity.podName,
             access_starts_at: slot.accessStartsAt,
             access_ends_at: slot.accessEndsAt,
             notification_send_at: slot.notificationSendAt,

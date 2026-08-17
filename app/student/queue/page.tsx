@@ -23,6 +23,7 @@ export default async function StudentQueuePage() {
               <tr>
                 <th>Cohort</th>
                 <th>Pod</th>
+                <th>Lab User</th>
                 <th>Seat</th>
                 <th>Window</th>
                 <th>Notification</th>
@@ -34,6 +35,7 @@ export default async function StudentQueuePage() {
                 <tr key={row.id}>
                   <td>{row.cohort_number}</td>
                   <td>{row.pod_name}</td>
+                  <td>{row.lab_username}</td>
                   <td>{row.seat_number}</td>
                   <td>
                     {formatDate(row.access_starts_at)} -{" "}

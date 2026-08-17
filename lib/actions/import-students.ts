@@ -151,12 +151,13 @@ async function importRows(
       payload: {
         actionUrl: `${env.NEXT_PUBLIC_APP_URL}/login`,
         cohortNumber: cohort.cohort_number,
+        labUsername: cohort.lab_username,
         podName: cohort.pod_name,
         seatNumber: cohort.seat_number,
         accessStartsAt: cohort.access_starts_at,
         accessEndsAt: cohort.access_ends_at,
       },
-      rendered_text: `Your DigitalRCC lab access is scheduled for cohort ${cohort.cohort_number}, ${cohort.pod_name}.`,
+      rendered_text: `Your DigitalRCC lab access is scheduled for cohort ${cohort.cohort_number}, ${cohort.pod_name}. Lab username: ${cohort.lab_username}.`,
       status: "queued",
     });
     imported += 1;

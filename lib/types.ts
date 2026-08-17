@@ -1213,6 +1213,7 @@ export type Database = {
           id: string;
           user_id: string;
           source: string;
+          lab_username: string;
           pod_name: string;
           cohort_number: number;
           seat_number: number;
@@ -1229,6 +1230,7 @@ export type Database = {
           id?: string;
           user_id: string;
           source?: string;
+          lab_username: string;
           pod_name: string;
           cohort_number: number;
           seat_number: number;
@@ -1243,6 +1245,7 @@ export type Database = {
         };
         Update: {
           source?: string;
+          lab_username?: string;
           pod_name?: string;
           cohort_number?: number;
           seat_number?: number;
