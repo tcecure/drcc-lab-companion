@@ -1,22 +1,26 @@
 import { AppShell } from "@/components/app-shell";
 import { Card, MetricCard } from "@/components/card";
+import { LabStatusCard } from "@/components/lab-status";
 import { requireManager } from "@/lib/auth";
+import { getLabStatus } from "@/lib/proxmox/status";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function AdminLabsPage() {
   const { roles } = await requireManager();
   const supabase = createAdminClient();
-  const [{ data: settings }, { data: instances }] = await Promise.all([
-    supabase
-      .from("lab_capacity_settings")
-      .select("*")
-      .is("lab_track_id", null)
-      .maybeSingle(),
-    supabase
-      .from("lab_instances")
-      .select("*")
-      .order("pod_name", { ascending: true }),
-  ]);
+  const [{ data: settings }, { data: instances }, labStatus] =
+    await Promise.all([
+      supabase
+        .from("lab_capacity_settings")
+        .select("*")
+        .is("lab_track_id", null)
+        .maybeSingle(),
+      supabase
+        .from("lab_instances")
+        .select("*")
+        .order("pod_name", { ascending: true }),
+      getLabStatus(),
+    ]);
   const active = (instances ?? []).filter((row) =>
     ["reserved", "provisioning", "active", "expiring"].includes(row.status),
   ).length;
@@ -24,6 +28,7 @@ export default async function AdminLabsPage() {
   return (
     <AppShell roles={roles} title="Lab Capacity">
       <section className="grid gap-4 md:grid-cols-3">
+        <LabStatusCard status={labStatus} />
         <MetricCard
           helper="Maximum active hands-on users."
           label="Active Capacity"

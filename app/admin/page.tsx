@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
 import { Card, MetricCard } from "@/components/card";
+import { LabStatusCard } from "@/components/lab-status";
 import { requireManager } from "@/lib/auth";
+import { getLabStatus } from "@/lib/proxmox/status";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function AdminPage() {
@@ -13,8 +15,8 @@ export default async function AdminPage() {
     { count: notifiedStudents },
     { count: activeStudents },
     { count: labRequests },
-    { count: labInstances },
     { data: capacity },
+    labStatus,
   ] = await Promise.all([
     supabase
       .from("student_cohort_assignments")
@@ -33,14 +35,11 @@ export default async function AdminPage() {
       .select("id", { count: "exact", head: true })
       .in("status", ["submitted", "queued", "on_hold"]),
     supabase
-      .from("lab_instances")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["reserved", "provisioning", "active", "expiring"]),
-    supabase
       .from("lab_capacity_settings")
       .select("maximum_active, maximum_reserved, standard_duration_days")
       .is("lab_track_id", null)
       .maybeSingle(),
+    getLabStatus(),
   ]);
   const active = (notifiedStudents ?? 0) + (activeStudents ?? 0);
 
@@ -52,11 +51,7 @@ export default async function AdminPage() {
           label="Queue Status"
           value={queuedStudents ? `${queuedStudents} waiting` : "No waitlist"}
         />
-        <MetricCard
-          helper="Proxmox live status will connect here in the infrastructure sprint."
-          label="Lab Status"
-          value={labInstances ? `${labInstances} running` : "API pending"}
-        />
+        <LabStatusCard status={labStatus} />
         <MetricCard
           helper="Students notified or inside an active access window."
           label="Active Students"
