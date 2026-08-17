@@ -1221,6 +1221,10 @@ export type Database = {
           access_ends_at: string;
           notification_send_at: string;
           status: "queued" | "notified" | "active" | "completed" | "cancelled";
+          credential_status: string;
+          credential_version: number;
+          credential_ready_at: string | null;
+          last_progress_synced_at: string | null;
           notified_at: string | null;
           created_by: string | null;
           created_at: string;
@@ -1238,6 +1242,10 @@ export type Database = {
           access_ends_at: string;
           notification_send_at: string;
           status?: Database["public"]["Tables"]["student_cohort_assignments"]["Row"]["status"];
+          credential_status?: string;
+          credential_version?: number;
+          credential_ready_at?: string | null;
+          last_progress_synced_at?: string | null;
           notified_at?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -1253,6 +1261,10 @@ export type Database = {
           access_ends_at?: string;
           notification_send_at?: string;
           status?: Database["public"]["Tables"]["student_cohort_assignments"]["Row"]["status"];
+          credential_status?: string;
+          credential_version?: number;
+          credential_ready_at?: string | null;
+          last_progress_synced_at?: string | null;
           notified_at?: string | null;
           created_by?: string | null;
           updated_at?: string;

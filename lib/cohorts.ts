@@ -49,15 +49,15 @@ export function getCohortSlot(cohortNumber: number, seatNumber: number) {
 }
 
 export function getPodName(seatNumber: number) {
-  return `student${String(seatNumber).padStart(2, "0")}`;
+  return `Pod${String(seatNumber).padStart(2, "0")}`;
 }
 
 export function getLabIdentity(seatNumber: number) {
-  const studentAccount = getPodName(seatNumber);
+  const suffix = String(seatNumber).padStart(2, "0");
 
   return {
-    labUsername: studentAccount,
-    podName: studentAccount,
+    labUsername: `student${suffix}`,
+    podName: getPodName(seatNumber),
   };
 }
 
@@ -118,6 +118,8 @@ export async function assignUserToNextCohort(
             access_ends_at: slot.accessEndsAt,
             notification_send_at: slot.notificationSendAt,
             status: "queued",
+            credential_status: "pending_rotation",
+            credential_version: 0,
             created_by: actorId,
           })
           .select("*")
