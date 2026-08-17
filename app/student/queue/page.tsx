@@ -22,6 +22,7 @@ export default async function StudentQueuePage() {
             <thead>
               <tr>
                 <th>Cohort</th>
+                <th>Pod</th>
                 <th>Seat</th>
                 <th>Window</th>
                 <th>Notification</th>
@@ -32,6 +33,7 @@ export default async function StudentQueuePage() {
               {(data ?? []).map((row) => (
                 <tr key={row.id}>
                   <td>{row.cohort_number}</td>
+                  <td>{row.pod_name}</td>
                   <td>{row.seat_number}</td>
                   <td>
                     {formatDate(row.access_starts_at)} -{" "}

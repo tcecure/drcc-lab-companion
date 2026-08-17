@@ -51,10 +51,7 @@ export type Database = {
       roles: {
         Row: {
           id: string;
-          role_name:
-            | "student"
-            | "approver"
-            | "admin";
+          role_name: "student" | "approver" | "admin";
           description: string;
           created_at: string;
         };
@@ -148,10 +145,7 @@ export type Database = {
           requested_program: string;
           reason: string;
           experience_level:
-            | "beginner"
-            | "intermediate"
-            | "advanced"
-            | "professional";
+            "beginner" | "intermediate" | "advanced" | "professional";
           school_or_organization: string;
           availability_notes: string | null;
           status:
@@ -669,7 +663,8 @@ export type Database = {
           lab_track_id: string;
           preferred_start_date: string | null;
           weekly_availability: string;
-          experience_level: "beginner" | "intermediate" | "advanced" | "professional";
+          experience_level:
+            "beginner" | "intermediate" | "advanced" | "professional";
           accessibility_needs: string | null;
           acceptable_use_accepted_at: string | null;
           connectivity_confirmed_at: string | null;
@@ -823,7 +818,15 @@ export type Database = {
           lab_track_id: string;
           pod_name: string;
           environment_identifier: string;
-          status: "available" | "reserved" | "provisioning" | "active" | "expiring" | "resetting" | "maintenance" | "disabled";
+          status:
+            | "available"
+            | "reserved"
+            | "provisioning"
+            | "active"
+            | "expiring"
+            | "resetting"
+            | "maintenance"
+            | "disabled";
           assigned_user_id: string | null;
           assigned_at: string | null;
           expires_at: string | null;
@@ -866,7 +869,15 @@ export type Database = {
           user_id: string;
           lab_instance_id: string;
           queue_entry_id: string;
-          status: "reservation_offered" | "reserved" | "declined" | "provisioning" | "active" | "completed" | "expired" | "revoked";
+          status:
+            | "reservation_offered"
+            | "reserved"
+            | "declined"
+            | "provisioning"
+            | "active"
+            | "completed"
+            | "expired"
+            | "revoked";
           reserved_at: string | null;
           starts_at: string | null;
           expires_at: string | null;
@@ -1074,7 +1085,13 @@ export type Database = {
           lab_assignment_id: string;
           user_id: string;
           verification_type: "check_progress" | "verify_lab";
-          status: "not_started" | "queued" | "running" | "passed" | "failed" | "error";
+          status:
+            | "not_started"
+            | "queued"
+            | "running"
+            | "passed"
+            | "failed"
+            | "error";
           score: number | null;
           results: Json;
           external_job_id: string | null;
@@ -1128,11 +1145,22 @@ export type Database = {
           id: string;
           user_id: string;
           lab_assignment_id: string | null;
-          category: "connectivity" | "guacamole" | "vpn" | "lab_guide" | "verification" | "other";
+          category:
+            | "connectivity"
+            | "guacamole"
+            | "vpn"
+            | "lab_guide"
+            | "verification"
+            | "other";
           subject: string;
           description: string;
           priority: "low" | "normal" | "high" | "urgent";
-          status: "open" | "in_progress" | "waiting_on_student" | "resolved" | "closed";
+          status:
+            | "open"
+            | "in_progress"
+            | "waiting_on_student"
+            | "resolved"
+            | "closed";
           assigned_to: string | null;
           created_at: string;
           updated_at: string;
@@ -1185,6 +1213,7 @@ export type Database = {
           id: string;
           user_id: string;
           source: string;
+          pod_name: string;
           cohort_number: number;
           seat_number: number;
           access_starts_at: string;
@@ -1200,6 +1229,7 @@ export type Database = {
           id?: string;
           user_id: string;
           source?: string;
+          pod_name: string;
           cohort_number: number;
           seat_number: number;
           access_starts_at: string;
@@ -1213,6 +1243,7 @@ export type Database = {
         };
         Update: {
           source?: string;
+          pod_name?: string;
           cohort_number?: number;
           seat_number?: number;
           access_starts_at?: string;
@@ -1238,7 +1269,12 @@ export type Database = {
           id: string;
           engagement_name: string;
           customer_display_name: string;
-          engagement_type: "readiness_support" | "assessment_prep" | "vulnerability_review" | "secure_collaboration" | "other";
+          engagement_type:
+            | "readiness_support"
+            | "assessment_prep"
+            | "vulnerability_review"
+            | "secure_collaboration"
+            | "other";
           status: "planning" | "active" | "paused" | "completed" | "archived";
           start_date: string | null;
           end_date: string | null;

@@ -32,6 +32,7 @@ export default async function AdminQueuePage() {
             <thead>
               <tr>
                 <th>Student</th>
+                <th>Pod</th>
                 <th>Cohort</th>
                 <th>Access Window</th>
                 <th>Notify</th>
@@ -50,6 +51,7 @@ export default async function AdminQueuePage() {
                       </p>
                       <p className="text-slate-400">{profile?.email}</p>
                     </td>
+                    <td>{row.pod_name}</td>
                     <td>
                       #{row.cohort_number}, Seat {row.seat_number}
                     </td>

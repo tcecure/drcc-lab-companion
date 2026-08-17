@@ -48,6 +48,10 @@ export function getCohortSlot(cohortNumber: number, seatNumber: number) {
   };
 }
 
+export function getPodName(seatNumber: number) {
+  return `student${String(seatNumber).padStart(2, "0")}`;
+}
+
 export async function assignUserToNextCohort(
   userId: string,
   actorId: string,
@@ -98,6 +102,7 @@ export async function assignUserToNextCohort(
             source: source as "csv_import" | "manual_entry" | "access_request",
             cohort_number: slot.cohortNumber,
             seat_number: slot.seatNumber,
+            pod_name: getPodName(slot.seatNumber),
             access_starts_at: slot.accessStartsAt,
             access_ends_at: slot.accessEndsAt,
             notification_send_at: slot.notificationSendAt,

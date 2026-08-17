@@ -33,11 +33,7 @@ export default async function StudentPage() {
         <MetricCard
           helper="Assigned lab seat for hands-on access."
           label="Seat"
-          value={
-            assignment
-              ? `${assignment.cohort_number}-${assignment.seat_number}`
-              : "Pending"
-          }
+          value={assignment ? assignment.pod_name : "Pending"}
         />
         <MetricCard
           helper="Standard completion window once access begins."
