@@ -174,23 +174,27 @@ export async function importCsvAction(formData: FormData) {
     redirect(`/admin/import?error=${message("Upload a CSV file.")}`);
   }
 
+  let count: number;
+
   try {
-    const count = await importRows(
+    count = await importRows(
       parseCsv(await file.text()),
       user.id,
       "csv_import",
     );
-    revalidatePath("/admin");
-    redirect(`/admin/import?message=${message(`Imported ${count} students.`)}`);
   } catch (error) {
     redirect(
       `/admin/import?error=${message(error instanceof Error ? error.message : "Import failed.")}`,
     );
   }
+
+  revalidatePath("/admin");
+  redirect(`/admin/import?message=${message(`Imported ${count} students.`)}`);
 }
 
 export async function importManualAction(formData: FormData) {
   const { user } = await requireManager();
+  let count: number;
 
   try {
     const rows = parseManual(formData);
@@ -199,12 +203,13 @@ export async function importManualAction(formData: FormData) {
       throw new Error("Add at least one student.");
     }
 
-    const count = await importRows(rows, user.id, "manual_entry");
-    revalidatePath("/admin");
-    redirect(`/admin/import?message=${message(`Imported ${count} students.`)}`);
+    count = await importRows(rows, user.id, "manual_entry");
   } catch (error) {
     redirect(
       `/admin/import?error=${message(error instanceof Error ? error.message : "Import failed.")}`,
     );
   }
+
+  revalidatePath("/admin");
+  redirect(`/admin/import?message=${message(`Imported ${count} students.`)}`);
 }
