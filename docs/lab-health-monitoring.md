@@ -86,7 +86,9 @@ Pods 01–02 and 16–20 have no member server yet; add them to
 TLS: pve1 serves the Proxmox cluster CA certificate
 (`CN=pve1.cyberlab.tcecure.com`, valid to 2027-09-20), which is self-signed from
 the PVE Cluster Manager CA — not publicly trusted. The poller therefore pins the
-cluster CA (`PROXMOX_VERIFY_TLS=/etc/drcc/pve-root-ca.pem`).
+cluster CA (`PROXMOX_VERIFY_TLS=/etc/drcc/pve-root-ca.pem`). The leaf certificate
+carries `IP:127.0.0.1` and `DNS:pve1` in its SAN, so hostname verification passes
+for a loopback base URL when the poller runs on pve1 itself.
 
 ## Proxmox access
 
@@ -118,13 +120,15 @@ secret does not belong there.
 sudo useradd --system --home /opt/drcc --shell /usr/sbin/nologin drcc-monitor
 sudo install -d -o drcc-monitor -g drcc-monitor /opt/drcc/lab-status-poller
 sudo install -o drcc-monitor -m 0644 poller.py /opt/drcc/lab-status-poller/poller.py
-sudo install -d -m 0750 /etc/drcc
-sudo scp root@pve1:/etc/pve/pve-root-ca.pem /etc/drcc/pve-root-ca.pem
-sudo install -m 0600 -o drcc-monitor lab-status-poller.env /etc/drcc/lab-status-poller.env  # fill in secrets
+sudo install -d -m 0750 -g drcc-monitor /etc/drcc
+sudo install -m 0640 -g drcc-monitor /etc/pve/pve-root-ca.pem /etc/drcc/pve-root-ca.pem
+sudo install -m 0640 -o drcc-monitor -g drcc-monitor \
+  lab-status-poller.env /etc/drcc/lab-status-poller.env   # fill in the secrets first
 sudo install -m 0644 lab-status-poller.service /etc/systemd/system/
 sudo systemctl enable --now lab-status-poller
 ```
 
-`python3 poller.py --once` publishes a single snapshot and exits — use it to
+`/etc/drcc` must be group-readable by `drcc-monitor` or the service cannot
+traverse it to reach the CA and env file. `python3 poller.py --once` publishes a single snapshot and exits — use it to
 verify a new host. When Proxmox cannot be read the poller publishes **nothing**,
 so the dashboard ages out to gray instead of reporting a false outage.

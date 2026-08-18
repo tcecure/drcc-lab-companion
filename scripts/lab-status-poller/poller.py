@@ -11,7 +11,7 @@ Configuration comes from the environment (see lab-status-poller.env.example):
   PROXMOX_API_BASE_URL      https://192.168.1.90:8006
   PROXMOX_API_TOKEN_ID      drcc-monitor@pve!lab-status
   PROXMOX_API_TOKEN_SECRET  <token secret>
-  PROXMOX_VERIFY_TLS        path to the Proxmox CA bundle, or "false"
+  PROXMOX_VERIFY_TLS        path to the Proxmox cluster CA (pve-root-ca.pem), or "false"
   DRCC_INGEST_URL           https://my.digitalrcc.com/api/lab-status/ingest
   LAB_STATUS_INGEST_SECRET  <bearer secret shared with the portal>
   POLL_INTERVAL_SECONDS     45
@@ -41,7 +41,12 @@ RESOURCE_FIELDS = ("id", "name", "node", "status", "type", "vmid")
 def ssl_context() -> ssl.SSLContext:
     """Verifies against the Proxmox CA when given; the API cert is not public."""
     if VERIFY_TLS and VERIFY_TLS.lower() not in {"false", "0", "no"}:
-        return ssl.create_default_context(cafile=VERIFY_TLS)
+        context = ssl.create_default_context(cafile=VERIFY_TLS)
+        # The PVE Cluster Manager CA omits the keyUsage extension, which OpenSSL's
+        # strict profile (default from Python 3.13) rejects. Chain, hostname, and
+        # expiry are still verified.
+        context.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+        return context
 
     context = ssl.create_default_context()
     context.check_hostname = False
