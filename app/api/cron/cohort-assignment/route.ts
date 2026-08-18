@@ -6,9 +6,9 @@ import { readServerEnv } from "@/lib/env";
 export const dynamic = "force-dynamic";
 
 /**
- * Hourly cron entry point. Student numbers are handed out for a cohort once its
- * 01:00 America/New_York assignment time has passed, so running hourly keeps the
- * schedule correct across daylight-saving changes.
+ * Daily cron entry point. The 06:05 UTC invocation runs after the cohort's
+ * 01:00 America/New_York assignment threshold in both standard and daylight
+ * time, while remaining compatible with Vercel's daily cron limit.
  */
 async function handle(request: NextRequest) {
   const env = readServerEnv();
