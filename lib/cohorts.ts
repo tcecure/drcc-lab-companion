@@ -3,49 +3,140 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const cohortConfig = {
-  firstAccessStartIso: "2026-08-17T13:00:00.000Z",
-  seatsPerCohort: 20,
+  timeZone: "America/New_York",
+  /** Cohort 1 opened Sunday, August 16, 2026. */
+  firstCohortStartDate: "2026-08-16",
+  /** Cohort 2 opens Sunday, September 6, 2026 after the one-week feedback break. */
+  secondCohortStartDate: "2026-09-06",
+  /** Cohorts run every two weeks from cohort 2 onward. */
+  cadenceDays: 14,
   accessWindowDays: 14,
-  feedbackBreakDaysAfterFirstCohort: 7,
-  notifyHourUtc: 14,
-  scheduleUntilIso: "2027-01-01T05:59:59.000Z",
+  seatsPerCohort: 20,
+  /** Student numbers are assigned at 01:00 local time on the cohort start date. */
+  assignmentHour: 1,
+  lastCohortNumber: 24,
 };
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
+export type CohortSchedule = {
+  cohortNumber: number;
+  startDate: string;
+  accessStartsAt: string;
+  accessEndsAt: string;
+  assignmentRunAt: string;
+};
+
+const dayMs = 86400000;
+
+function parseDate(dateIso: string) {
+  const [year, month, day] = dateIso.split("-").map(Number);
+
+  return Date.UTC(year, month - 1, day);
 }
 
-function cohortOffsetDays(cohortNumber: number) {
+function formatDateIso(utcMidnight: number) {
+  return new Date(utcMidnight).toISOString().slice(0, 10);
+}
+
+function zoneOffsetMinutes(instant: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: cohortConfig.timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(instant);
+  const lookup = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+  const asUtc = Date.UTC(
+    lookup("year"),
+    lookup("month") - 1,
+    lookup("day"),
+    lookup("hour") % 24,
+    lookup("minute"),
+    lookup("second"),
+  );
+
+  return (asUtc - instant.getTime()) / 60000;
+}
+
+/** Converts a local wall-clock time in the cohort time zone into a UTC instant. */
+function zonedTimeToUtc(dateIso: string, hour: number) {
+  const naive = parseDate(dateIso) + hour * 3600000;
+  const firstPass = naive - zoneOffsetMinutes(new Date(naive)) * 60000;
+
+  return new Date(naive - zoneOffsetMinutes(new Date(firstPass)) * 60000);
+}
+
+export function getCohortStartDate(cohortNumber: number) {
   if (cohortNumber <= 1) {
-    return 0;
+    return cohortConfig.firstCohortStartDate;
   }
 
-  return (
-    cohortConfig.accessWindowDays +
-    cohortConfig.feedbackBreakDaysAfterFirstCohort +
-    (cohortNumber - 2) * cohortConfig.accessWindowDays
+  return formatDateIso(
+    parseDate(cohortConfig.secondCohortStartDate) +
+      (cohortNumber - 2) * cohortConfig.cadenceDays * dayMs,
   );
 }
 
-export function getCohortSlot(cohortNumber: number, seatNumber: number) {
-  const accessStartsAt = addDays(
-    new Date(cohortConfig.firstAccessStartIso),
-    cohortOffsetDays(cohortNumber),
+export function getCohortSchedule(cohortNumber: number): CohortSchedule {
+  const startDate = getCohortStartDate(cohortNumber);
+  const accessStartsAt = zonedTimeToUtc(startDate, 0);
+  const accessEndsAt = zonedTimeToUtc(
+    formatDateIso(parseDate(startDate) + cohortConfig.accessWindowDays * dayMs),
+    0,
   );
-  const accessEndsAt = addDays(accessStartsAt, cohortConfig.accessWindowDays);
-  const notificationSendAt = new Date(accessStartsAt);
-  notificationSendAt.setUTCDate(notificationSendAt.getUTCDate() - 1);
-  notificationSendAt.setUTCHours(cohortConfig.notifyHourUtc, 0, 0, 0);
 
   return {
     cohortNumber,
-    seatNumber,
+    startDate,
     accessStartsAt: accessStartsAt.toISOString(),
     accessEndsAt: accessEndsAt.toISOString(),
-    notificationSendAt: notificationSendAt.toISOString(),
+    assignmentRunAt: zonedTimeToUtc(
+      startDate,
+      cohortConfig.assignmentHour,
+    ).toISOString(),
   };
+}
+
+/** The first cohort that has not started yet, relative to `now`. */
+export function getNextCohortNumber(now = new Date()) {
+  for (
+    let cohortNumber = 1;
+    cohortNumber <= cohortConfig.lastCohortNumber;
+    cohortNumber += 1
+  ) {
+    if (new Date(getCohortSchedule(cohortNumber).accessStartsAt) > now) {
+      return cohortNumber;
+    }
+  }
+
+  return null;
+}
+
+/** The cohort a lab start date (e.g. the registration form date) belongs to. */
+export function getCohortNumberForStartDate(dateIso: string) {
+  for (
+    let cohortNumber = 1;
+    cohortNumber <= cohortConfig.lastCohortNumber;
+    cohortNumber += 1
+  ) {
+    if (getCohortStartDate(cohortNumber) >= dateIso) {
+      return cohortNumber;
+    }
+  }
+
+  return null;
+}
+
+export function listCohortOptions(now = new Date(), count = 8) {
+  const first = getNextCohortNumber(now) ?? cohortConfig.lastCohortNumber;
+
+  return Array.from({ length: count }, (_, index) => first + index)
+    .filter((cohortNumber) => cohortNumber <= cohortConfig.lastCohortNumber)
+    .map(getCohortSchedule);
 }
 
 export function getPodName(seatNumber: number) {
@@ -61,78 +152,182 @@ export function getLabIdentity(seatNumber: number) {
   };
 }
 
-export async function assignUserToNextCohort(
+export function formatCohortStartDate(startDate: string) {
+  return new Date(zonedTimeToUtc(startDate, 12)).toLocaleDateString("en-US", {
+    timeZone: cohortConfig.timeZone,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * Places a student in the queue for a cohort without assigning a student
+ * number. Seats are handed out by `assignDueCohortSeats` at 01:00 local time on
+ * the cohort start date.
+ */
+export async function queueUserForCohort(
   userId: string,
+  cohortNumber: number,
   actorId: string,
   source = "manual_entry",
 ) {
   const supabase = createAdminClient();
+  // student_cohort_assignments is unique on user_id, so a cancelled row has to
+  // be re-queued in place rather than inserted alongside.
   const { data: existing } = await supabase
     .from("student_cohort_assignments")
     .select("*")
     .eq("user_id", userId)
-    .neq("status", "cancelled")
     .maybeSingle();
 
-  if (existing) {
-    return existing;
+  if (existing && existing.status !== "cancelled") {
+    return { assignment: existing, alreadyQueued: true };
   }
 
-  const { data: assignments } = await supabase
+  if (cohortNumber > cohortConfig.lastCohortNumber) {
+    throw new Error("The cohort calendar does not reach that far ahead.");
+  }
+
+  const schedule = getCohortSchedule(cohortNumber);
+  const values = {
+    source,
+    cohort_number: schedule.cohortNumber,
+    seat_number: null,
+    lab_username: null,
+    pod_name: null,
+    access_starts_at: schedule.accessStartsAt,
+    access_ends_at: schedule.accessEndsAt,
+    notification_send_at: schedule.assignmentRunAt,
+    status: "queued" as const,
+    credential_status: "pending_rotation" as const,
+    credential_version: 0,
+    created_by: actorId,
+  };
+  const { data, error } = existing
+    ? await supabase
+        .from("student_cohort_assignments")
+        .update({ ...values, notified_at: null })
+        .eq("id", existing.id)
+        .select("*")
+        .single()
+    : await supabase
+        .from("student_cohort_assignments")
+        .insert({ ...values, user_id: userId })
+        .select("*")
+        .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { assignment: data, alreadyQueued: false };
+}
+
+/**
+ * Hands out student numbers for every cohort whose 01:00 assignment time has
+ * passed, in queue order. Safe to run repeatedly.
+ */
+export async function assignDueCohortSeats(now = new Date()) {
+  const supabase = createAdminClient();
+  const { data: pending, error } = await supabase
     .from("student_cohort_assignments")
-    .select("cohort_number, seat_number, status")
-    .neq("status", "cancelled");
-  const occupied = new Set(
-    (assignments ?? []).map((row) => `${row.cohort_number}:${row.seat_number}`),
-  );
+    .select("*")
+    .is("seat_number", null)
+    .eq("status", "queued")
+    .order("created_at", { ascending: true });
 
-  for (let cohortNumber = 1; cohortNumber <= 12; cohortNumber += 1) {
-    for (
-      let seatNumber = 1;
-      seatNumber <= cohortConfig.seatsPerCohort;
-      seatNumber += 1
-    ) {
-      if (!occupied.has(`${cohortNumber}:${seatNumber}`)) {
-        const slot = getCohortSlot(cohortNumber, seatNumber);
-        const labIdentity = getLabIdentity(slot.seatNumber);
+  if (error) {
+    throw new Error(error.message);
+  }
 
-        if (
-          new Date(slot.accessStartsAt) >
-          new Date(cohortConfig.scheduleUntilIso)
-        ) {
-          throw new Error(
-            "The cohort calendar is full through the end of the year.",
-          );
-        }
+  const assigned: {
+    id: string;
+    userId: string;
+    cohortNumber: number;
+    seatNumber: number;
+    labUsername: string;
+    podName: string;
+    accessStartsAt: string;
+    accessEndsAt: string;
+  }[] = [];
+  const skipped: { id: string; reason: string }[] = [];
+  const takenSeats = new Map<number, Set<number>>();
 
-        const { data, error } = await supabase
-          .from("student_cohort_assignments")
-          .insert({
-            user_id: userId,
-            source: source as "csv_import" | "manual_entry" | "access_request",
-            cohort_number: slot.cohortNumber,
-            seat_number: slot.seatNumber,
-            lab_username: labIdentity.labUsername,
-            pod_name: labIdentity.podName,
-            access_starts_at: slot.accessStartsAt,
-            access_ends_at: slot.accessEndsAt,
-            notification_send_at: slot.notificationSendAt,
-            status: "queued",
-            credential_status: "pending_rotation",
-            credential_version: 0,
-            created_by: actorId,
-          })
-          .select("*")
-          .single();
+  for (const row of pending ?? []) {
+    const schedule = getCohortSchedule(row.cohort_number);
 
-        if (error) {
-          throw new Error(error.message);
-        }
+    if (new Date(schedule.assignmentRunAt) > now) {
+      continue;
+    }
 
-        return data;
+    if (!takenSeats.has(row.cohort_number)) {
+      const { data: occupied } = await supabase
+        .from("student_cohort_assignments")
+        .select("seat_number")
+        .eq("cohort_number", row.cohort_number)
+        .neq("status", "cancelled")
+        .not("seat_number", "is", null);
+
+      takenSeats.set(
+        row.cohort_number,
+        new Set(
+          (occupied ?? [])
+            .map((seat) => seat.seat_number)
+            .filter((seat): seat is number => typeof seat === "number"),
+        ),
+      );
+    }
+
+    const taken = takenSeats.get(row.cohort_number)!;
+    let seatNumber: number | null = null;
+
+    for (let seat = 1; seat <= cohortConfig.seatsPerCohort; seat += 1) {
+      if (!taken.has(seat)) {
+        seatNumber = seat;
+        break;
       }
     }
+
+    if (seatNumber === null) {
+      skipped.push({
+        id: row.id,
+        reason: `Cohort ${row.cohort_number} has no free seat.`,
+      });
+      continue;
+    }
+
+    const identity = getLabIdentity(seatNumber);
+    const { error: updateError } = await supabase
+      .from("student_cohort_assignments")
+      .update({
+        seat_number: seatNumber,
+        lab_username: identity.labUsername,
+        pod_name: identity.podName,
+        status: "notified",
+        notified_at: new Date().toISOString(),
+      })
+      .eq("id", row.id)
+      .is("seat_number", null);
+
+    if (updateError) {
+      skipped.push({ id: row.id, reason: updateError.message });
+      continue;
+    }
+
+    taken.add(seatNumber);
+    assigned.push({
+      id: row.id,
+      userId: row.user_id,
+      cohortNumber: row.cohort_number,
+      seatNumber,
+      labUsername: identity.labUsername,
+      podName: identity.podName,
+      accessStartsAt: schedule.accessStartsAt,
+      accessEndsAt: schedule.accessEndsAt,
+    });
   }
 
-  throw new Error("No cohort seats remain.");
+  return { assigned, skipped };
 }

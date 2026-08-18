@@ -1213,10 +1213,10 @@ export type Database = {
           id: string;
           user_id: string;
           source: string;
-          lab_username: string;
-          pod_name: string;
+          lab_username: string | null;
+          pod_name: string | null;
           cohort_number: number;
-          seat_number: number;
+          seat_number: number | null;
           access_starts_at: string;
           access_ends_at: string;
           notification_send_at: string;
@@ -1234,10 +1234,10 @@ export type Database = {
           id?: string;
           user_id: string;
           source?: string;
-          lab_username: string;
-          pod_name: string;
+          lab_username: string | null;
+          pod_name: string | null;
           cohort_number: number;
-          seat_number: number;
+          seat_number: number | null;
           access_starts_at: string;
           access_ends_at: string;
           notification_send_at: string;
@@ -1253,10 +1253,10 @@ export type Database = {
         };
         Update: {
           source?: string;
-          lab_username?: string;
-          pod_name?: string;
+          lab_username?: string | null;
+          pod_name?: string | null;
           cohort_number?: number;
-          seat_number?: number;
+          seat_number?: number | null;
           access_starts_at?: string;
           access_ends_at?: string;
           notification_send_at?: string;

@@ -6,12 +6,20 @@ const envSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url(),
   CRON_SECRET: z.string().optional(),
+  EMAIL_DELIVERY_MODE: z.enum(["mock", "live"]).default("mock"),
+  SES_FROM_ADDRESS: z.string().email().optional(),
+  SES_REPLY_TO_ADDRESS: z.string().email().optional(),
+  AWS_REGION: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
   PROXMOX_API_BASE_URL: z.string().url().optional(),
   PROXMOX_API_TOKEN_ID: z.string().optional(),
   PROXMOX_API_TOKEN_SECRET: z.string().optional(),
   PROXMOX_EXPECTED_NODES: z.string().optional(),
   PROXMOX_EXPECTED_PODS: z.string().optional(),
 });
+
+export type ServerEnv = z.infer<typeof envSchema>;
 
 function value(input: string | undefined) {
   return input?.trim() || undefined;
@@ -48,6 +56,12 @@ export function readServerEnv() {
       value(process.env.SUPABASE_SECRET_KEY) ??
       value(process.env.SUPABASE_SERVICE_ROLE_KEY),
     CRON_SECRET: value(process.env.CRON_SECRET),
+    EMAIL_DELIVERY_MODE: value(process.env.EMAIL_DELIVERY_MODE),
+    SES_FROM_ADDRESS: value(process.env.SES_FROM_ADDRESS),
+    SES_REPLY_TO_ADDRESS: value(process.env.SES_REPLY_TO_ADDRESS),
+    AWS_REGION: value(process.env.AWS_REGION),
+    AWS_ACCESS_KEY_ID: value(process.env.AWS_ACCESS_KEY_ID),
+    AWS_SECRET_ACCESS_KEY: value(process.env.AWS_SECRET_ACCESS_KEY),
     PROXMOX_API_BASE_URL: value(process.env.PROXMOX_API_BASE_URL),
     PROXMOX_API_TOKEN_ID: value(process.env.PROXMOX_API_TOKEN_ID),
     PROXMOX_API_TOKEN_SECRET: value(process.env.PROXMOX_API_TOKEN_SECRET),
