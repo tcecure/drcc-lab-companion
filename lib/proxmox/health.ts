@@ -1,11 +1,25 @@
 export type LabStatusColor = "green" | "yellow" | "red" | "gray";
 
-export type ProxmoxNodeRow = {
+export type ProxmoxMetrics = {
+  cpu?: number;
+  maxcpu?: number;
+  mem?: number;
+  maxmem?: number;
+  disk?: number;
+  maxdisk?: number;
+  uptime?: number;
+  netin?: number;
+  netout?: number;
+  diskread?: number;
+  diskwrite?: number;
+};
+
+export type ProxmoxNodeRow = ProxmoxMetrics & {
   node: string;
   status?: string;
 };
 
-export type ProxmoxResourceRow = {
+export type ProxmoxResourceRow = ProxmoxMetrics & {
   id?: string;
   name?: string;
   node?: string;

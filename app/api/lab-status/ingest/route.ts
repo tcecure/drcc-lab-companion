@@ -6,12 +6,27 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
+const metricsSchema = {
+  cpu: z.number().nonnegative().optional(),
+  maxcpu: z.number().nonnegative().optional(),
+  mem: z.number().nonnegative().optional(),
+  maxmem: z.number().nonnegative().optional(),
+  disk: z.number().nonnegative().optional(),
+  maxdisk: z.number().nonnegative().optional(),
+  uptime: z.number().nonnegative().optional(),
+  netin: z.number().nonnegative().optional(),
+  netout: z.number().nonnegative().optional(),
+  diskread: z.number().nonnegative().optional(),
+  diskwrite: z.number().nonnegative().optional(),
+};
+
 const payloadSchema = z.object({
   checkedAt: z.string().datetime().optional(),
   source: z.string().max(64).optional(),
   nodes: z
     .array(
       z.object({
+        ...metricsSchema,
         node: z.string().min(1),
         status: z.string().optional(),
       }),
@@ -20,6 +35,7 @@ const payloadSchema = z.object({
   resources: z
     .array(
       z.object({
+        ...metricsSchema,
         id: z.string().optional(),
         name: z.string().optional(),
         node: z.string().optional(),
@@ -55,7 +71,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const parsed = payloadSchema.safeParse(await request.json().catch(() => null));
+  const parsed = payloadSchema.safeParse(
+    await request.json().catch(() => null),
+  );
 
   if (!parsed.success) {
     return NextResponse.json(

@@ -4,7 +4,8 @@
 Runs inside the lab network (any host that can reach the Proxmox API), so the
 Proxmox management interface never needs to be published on the internet. Every
 interval it reads /nodes and /cluster/resources?type=vm with a read-only API
-token and POSTs a normalized snapshot to the portal's ingest endpoint.
+token and POSTs a normalized status and utilization snapshot to the portal's
+ingest endpoint.
 
 Configuration comes from the environment (see lab-status-poller.env.example):
 
@@ -35,7 +36,21 @@ INGEST_SECRET = os.environ["LAB_STATUS_INGEST_SECRET"]
 VERIFY_TLS = os.environ.get("PROXMOX_VERIFY_TLS", "")
 INTERVAL = int(os.environ.get("POLL_INTERVAL_SECONDS", "45"))
 
-RESOURCE_FIELDS = ("id", "name", "node", "status", "type", "vmid")
+METRIC_FIELDS = (
+    "cpu",
+    "maxcpu",
+    "mem",
+    "maxmem",
+    "disk",
+    "maxdisk",
+    "uptime",
+    "netin",
+    "netout",
+    "diskread",
+    "diskwrite",
+)
+NODE_FIELDS = ("node", "status", *METRIC_FIELDS)
+RESOURCE_FIELDS = ("id", "name", "node", "status", "type", "vmid", *METRIC_FIELDS)
 
 
 def ssl_context() -> ssl.SSLContext:
@@ -66,13 +81,14 @@ def proxmox_get(path: str):
         return json.load(response)["data"]
 
 
+def select_fields(row: dict, fields: tuple[str, ...]) -> dict:
+    return {field: row[field] for field in fields if row.get(field) is not None}
+
+
 def collect() -> dict:
-    nodes = [
-        {"node": node["node"], "status": node.get("status", "unknown")}
-        for node in proxmox_get("/api2/json/nodes")
-    ]
+    nodes = [select_fields(node, NODE_FIELDS) for node in proxmox_get("/api2/json/nodes")]
     resources = [
-        {field: resource[field] for field in RESOURCE_FIELDS if field in resource}
+        select_fields(resource, RESOURCE_FIELDS)
         for resource in proxmox_get("/api2/json/cluster/resources?type=vm")
     ]
 

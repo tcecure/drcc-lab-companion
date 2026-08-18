@@ -20,7 +20,7 @@ pve1:8006  <--(read-only token, LAN)--  poller (lab host)
                               Supabase: public.lab_status_snapshots
                                           |
                                           v
-                              getLabStatus() -> admin dashboard card
+                              getLabStatus() -> dashboard card + metrics page
 ```
 
 `RECOMMENDED_INTEGRATION=internal-poller`. `lib/proxmox/status.ts` still supports
@@ -33,15 +33,21 @@ says so explicitly — a stale or unreachable monitor is never shown as an outag
 
 ## Health rules
 
-| Colour | Meaning |
-| --- | --- |
-| green | Both core DCs and every expected pod component are running |
-| yellow | Both core DCs run, but a pod component (or expected node) is stopped/missing |
-| red | A core DC is stopped or missing |
-| gray | Monitor cannot reach Proxmox, no snapshot yet, or data is stale (not an outage) |
+| Colour | Meaning                                                                         |
+| ------ | ------------------------------------------------------------------------------- |
+| green  | Both core DCs and every expected pod component are running                      |
+| yellow | Both core DCs run, but a pod component (or expected node) is stopped/missing    |
+| red    | A core DC is stopped or missing                                                 |
+| gray   | Monitor cannot reach Proxmox, no snapshot yet, or data is stale (not an outage) |
 
 Every result carries `checkedAt` and `failed[]`, the exact resources at fault
 (e.g. `POD07-SRV (stopped)`, `DC02 (missing)`).
+
+The dashboard Lab Status card links to `/admin/lab-status`. That admin-only page
+shows the current pve1 host utilization and every VM reported by Proxmox,
+including state, CPU, memory, disk, uptime, network traffic, and disk I/O. The
+page continues to show availability when an older poller sends no utilization
+fields; missing values are labeled `Not reported`.
 
 ## Inventory (observed 2026-08-18)
 
@@ -50,35 +56,35 @@ there is no cluster. `cluster/resources` therefore returns pve1's 46 VMs.
 
 The two core domain controllers are **virtual machines, not Proxmox nodes**:
 
-| Resource | VMID | Node | Type | Status |
-| --- | --- | --- | --- | --- |
-| DC01 | 200 | pve1 | qemu | running |
-| DC02 | 221 | pve1 | qemu | running |
+| Resource | VMID | Node | Type | Status  |
+| -------- | ---- | ---- | ---- | ------- |
+| DC01     | 200  | pve1 | qemu | running |
+| DC02     | 221  | pve1 | qemu | running |
 
 Pod components (all `qemu` on `pve1`, all running):
 
-| Pod | Gateway (VMID) | Member server (VMID) |
-| --- | --- | --- |
-| Pod01 | Pod01-GW (300) | — |
-| Pod02 | Pod02-GW (301) | — |
-| Pod03 | Pod03-GW (302) | POD03-SRV (403) |
-| Pod04 | Pod04-GW (303) | POD04-SRV (404) |
-| Pod05 | Pod05-GW (304) | POD05-SRV (405) |
-| Pod06 | Pod06-GW (305) | POD06-SRV (406) |
-| Pod07 | Pod07-GW (306) | POD07-SRV (407) |
-| Pod08 | Pod08-GW (307) | POD08-SRV (408) |
-| Pod09 | Pod09-GW (308) | POD09-SRV (409) |
-| Pod10 | Pod10-GW (309) | POD10-SRV (410) |
-| Pod11 | Pod11-GW (310) | POD11-SRV (411) |
-| Pod12 | Pod12-GW (311) | POD12-SRV (412) |
-| Pod13 | Pod13-GW (312) | POD13-SRV (413) |
-| Pod14 | Pod14-GW (313) | POD14-SRV (414) |
-| Pod15 | Pod15-GW (314) | POD15-SRV (415) |
-| Pod16 | Pod16-GW (315) | — |
-| Pod17 | Pod17-GW (316) | — |
-| Pod18 | Pod18-GW (317) | — |
-| Pod19 | Pod19-GW (318) | — |
-| Pod20 | Pod20-GW (319) | — |
+| Pod   | Gateway (VMID) | Member server (VMID) |
+| ----- | -------------- | -------------------- |
+| Pod01 | Pod01-GW (300) | —                    |
+| Pod02 | Pod02-GW (301) | —                    |
+| Pod03 | Pod03-GW (302) | POD03-SRV (403)      |
+| Pod04 | Pod04-GW (303) | POD04-SRV (404)      |
+| Pod05 | Pod05-GW (304) | POD05-SRV (405)      |
+| Pod06 | Pod06-GW (305) | POD06-SRV (406)      |
+| Pod07 | Pod07-GW (306) | POD07-SRV (407)      |
+| Pod08 | Pod08-GW (307) | POD08-SRV (408)      |
+| Pod09 | Pod09-GW (308) | POD09-SRV (409)      |
+| Pod10 | Pod10-GW (309) | POD10-SRV (410)      |
+| Pod11 | Pod11-GW (310) | POD11-SRV (411)      |
+| Pod12 | Pod12-GW (311) | POD12-SRV (412)      |
+| Pod13 | Pod13-GW (312) | POD13-SRV (413)      |
+| Pod14 | Pod14-GW (313) | POD14-SRV (414)      |
+| Pod15 | Pod15-GW (314) | POD15-SRV (415)      |
+| Pod16 | Pod16-GW (315) | —                    |
+| Pod17 | Pod17-GW (316) | —                    |
+| Pod18 | Pod18-GW (317) | —                    |
+| Pod19 | Pod19-GW (318) | —                    |
+| Pod20 | Pod20-GW (319) | —                    |
 
 Pods 01–02 and 16–20 have no member server yet; add them to
 `PROXMOX_EXPECTED_PODS` when they are built, or the card turns yellow.
@@ -126,6 +132,15 @@ sudo install -m 0640 -o drcc-monitor -g drcc-monitor \
   lab-status-poller.env /etc/drcc/lab-status-poller.env   # fill in the secrets first
 sudo install -m 0644 lab-status-poller.service /etc/systemd/system/
 sudo systemctl enable --now lab-status-poller
+```
+
+After updating the portal's poller code, install and restart it on pve1:
+
+```bash
+sudo install -o drcc-monitor -m 0644 \
+  scripts/lab-status-poller/poller.py /opt/drcc/lab-status-poller/poller.py
+sudo systemctl restart lab-status-poller
+sudo systemctl status --no-pager lab-status-poller
 ```
 
 `/etc/drcc` must be group-readable by `drcc-monitor` or the service cannot

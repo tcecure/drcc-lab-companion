@@ -13,10 +13,7 @@ import {
 } from "@/lib/proxmox/health";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export type {
-  LabStatusColor,
-  LabStatusSummary,
-} from "@/lib/proxmox/health";
+export type { LabStatusColor, LabStatusSummary } from "@/lib/proxmox/health";
 
 function expectations(): LabStatusExpectations {
   const env = readServerEnv();
@@ -81,6 +78,15 @@ async function readSnapshotFromDatabase(): Promise<LabStatusSnapshot | null> {
   };
 }
 
+/** Latest normalized inventory snapshot for the admin metrics drill-down. */
+export async function getLatestLabSnapshot() {
+  try {
+    return await readSnapshotFromDatabase();
+  } catch {
+    return null;
+  }
+}
+
 async function readSnapshotFromProxmox(): Promise<LabStatusSnapshot> {
   const [nodes, resources] = await Promise.all([
     proxmoxGet<ProxmoxNodeRow[]>("/api2/json/nodes"),
@@ -107,8 +113,8 @@ export async function getLabStatus() {
   const expected = expectations();
   const hasDirectApi = Boolean(
     env.PROXMOX_API_BASE_URL &&
-      env.PROXMOX_API_TOKEN_ID &&
-      env.PROXMOX_API_TOKEN_SECRET,
+    env.PROXMOX_API_TOKEN_ID &&
+    env.PROXMOX_API_TOKEN_SECRET,
   );
 
   if (!expected.coreDCs.length && !expected.pods.length) {
@@ -126,7 +132,8 @@ export async function getLabStatus() {
     snapshot = await readSnapshotFromDatabase();
 
     if (!snapshot) {
-      failure = "No lab health snapshot has been received from the lab poller yet.";
+      failure =
+        "No lab health snapshot has been received from the lab poller yet.";
     }
   } catch (error) {
     failure =

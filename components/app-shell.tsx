@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  Activity,
   Bell,
   BookOpen,
   ClipboardCheck,
@@ -41,6 +42,7 @@ const studentNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { href: "/admin", icon: ShieldCheck, label: "Admin Overview" },
+  { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
   { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals" },
   { href: "/admin/queue", icon: Users, label: "Student Queue" },
   { href: "/admin/import", icon: Import, label: "Import Students" },

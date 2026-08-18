@@ -1,4 +1,5 @@
-import { Boxes, Clock3, Server, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Boxes, Clock3, Server, ShieldCheck } from "lucide-react";
 
 import type { LabStatusSummary } from "@/lib/proxmox/status";
 
@@ -9,7 +10,13 @@ const colorClasses = {
   yellow: "border-amber-300/45 bg-amber-300/20 text-amber-50",
 };
 
-export function LabStatusCard({ status }: { status: LabStatusSummary }) {
+export function LabStatusCard({
+  href = "/admin/lab-status",
+  status,
+}: {
+  href?: string | null;
+  status: LabStatusSummary;
+}) {
   const unavailable = status.color === "gray";
   const checkedAt = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Chicago",
@@ -19,12 +26,22 @@ export function LabStatusCard({ status }: { status: LabStatusSummary }) {
     minute: "2-digit",
   }).format(new Date(status.checkedAt));
 
-  return (
-    <section className="card">
+  const content = (
+    <>
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5 xl:items-center">
         <div className="sm:col-span-2 xl:col-span-1">
           <p className="eyebrow">Live metric</p>
-          <h2 className="mt-2 text-base font-semibold">Lab Status</h2>
+          <div className="mt-2 flex items-center gap-2">
+            <h2 className="text-base font-semibold">Lab Status</h2>
+            {href ? (
+              <span
+                className="text-cyan-200 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                title="Open detailed lab metrics"
+              >
+                <ArrowUpRight aria-hidden="true" size={17} />
+              </span>
+            ) : null}
+          </div>
           <span
             className={`mt-3 inline-flex min-w-24 items-center justify-center rounded-full border px-3 py-1 text-sm font-extrabold ${colorClasses[status.color]}`}
           >
@@ -71,7 +88,21 @@ export function LabStatusCard({ status }: { status: LabStatusSummary }) {
       <p className="mt-5 border-t border-cyan-200/10 pt-3 text-sm leading-6 text-slate-300">
         {status.detail}
       </p>
-    </section>
+    </>
+  );
+
+  if (!href) {
+    return <section className="card">{content}</section>;
+  }
+
+  return (
+    <Link
+      aria-label={`Lab Status: ${status.label}. Open detailed lab metrics`}
+      className="card group block transition-colors hover:border-cyan-300/35"
+      href={href}
+    >
+      {content}
+    </Link>
   );
 }
 
