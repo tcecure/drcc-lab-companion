@@ -27,8 +27,8 @@ export default async function AdminLabsPage() {
 
   return (
     <AppShell roles={roles} title="Lab Capacity">
+      <LabStatusCard status={labStatus} />
       <section className="grid gap-4 md:grid-cols-3">
-        <LabStatusCard status={labStatus} />
         <MetricCard
           helper="Maximum active hands-on users."
           label="Active Capacity"

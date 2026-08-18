@@ -45,13 +45,13 @@ export default async function AdminPage() {
 
   return (
     <AppShell roles={roles} title="Admin Overview">
+      <LabStatusCard status={labStatus} />
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <MetricCard
           helper="Students queued and waiting for a student number."
           label="Queue Status"
           value={queuedStudents ? `${queuedStudents} waiting` : "No waitlist"}
         />
-        <LabStatusCard status={labStatus} />
         <MetricCard
           helper="Students notified or inside an active access window."
           label="Active Students"
