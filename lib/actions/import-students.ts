@@ -1,14 +1,19 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireManager } from "@/lib/auth";
 import { runCohortAssignment } from "@/lib/cohort-runner";
 import {
+  activateUserForCurrentCohort,
+  cohortConfig,
   formatCohortStartDate,
   getCohortNumberForStartDate,
   getCohortSchedule,
+  getCurrentCohortNumber,
   getNextCohortNumber,
   queueUserForCohort,
 } from "@/lib/cohorts";
@@ -28,6 +33,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 type ImportResult = {
   queued: number;
   alreadyQueued: number;
+};
+
+type ActiveImportResult = {
+  activated: number;
+  alreadyActive: number;
 };
 
 function message(input: string) {
@@ -118,48 +128,84 @@ async function findAuthUserId(
   return null;
 }
 
-async function importRows(
-  rows: StudentRow[],
-  actorId: string,
-  source: "csv_import" | "manual_entry",
-  selectedCohort: number | null,
-): Promise<ImportResult> {
-  const env = readServerEnv();
-  const supabase = createAdminClient();
-  const { data: studentRole } = await supabase
+async function getStudentRoleId(
+  supabase: ReturnType<typeof createAdminClient>,
+) {
+  const { data, error } = await supabase
     .from("roles")
     .select("id")
     .eq("role_name", "student")
     .single();
 
-  if (!studentRole) {
-    throw new Error("Student role is missing in Supabase.");
+  if (error || !data) {
+    throw new Error(error?.message ?? "Student role is missing in Supabase.");
   }
 
-  const result: ImportResult = { queued: 0, alreadyQueued: 0 };
+  return data.id;
+}
 
-  for (const row of rows) {
-    const cohortNumber = resolveCohortNumber(row, selectedCohort);
-    const schedule = getCohortSchedule(cohortNumber);
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", row.email)
-      .maybeSingle();
-    let userId = profile?.id ?? null;
+async function ensureStudentAccount({
+  actorId,
+  mode,
+  redirectTo,
+  row,
+  studentRoleId,
+  supabase,
+}: {
+  actorId: string;
+  mode: "invite" | "silent";
+  redirectTo?: string;
+  row: StudentRow;
+  studentRoleId: string;
+  supabase: ReturnType<typeof createAdminClient>;
+}) {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("email", row.email)
+    .maybeSingle();
 
-    if (!userId) {
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  let userId = profile?.id ?? null;
+
+  if (!userId) {
+    if (mode === "silent") {
+      const { data, error } = await supabase.auth.admin.createUser({
+        email: row.email,
+        email_confirm: true,
+        password: randomBytes(32).toString("base64url"),
+        user_metadata: {
+          full_name: row.fullName,
+          organization: "DigitalRCC Student",
+          silent_import: true,
+        },
+      });
+
+      if (error) {
+        userId = await findAuthUserId(supabase, row.email);
+
+        if (!userId) {
+          throw new Error(`${row.email}: ${error.message}`);
+        }
+      } else {
+        userId = data.user?.id ?? null;
+      }
+    } else {
       const { data, error } = await supabase.auth.admin.inviteUserByEmail(
         row.email,
         {
-          data: { full_name: row.fullName, organization: "DigitalRCC Student" },
-          redirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+          data: {
+            full_name: row.fullName,
+            organization: "DigitalRCC Student",
+          },
+          redirectTo,
         },
       );
 
       if (error) {
-        // An auth user can already exist without a profile row (e.g. a
-        // self-service access request), which makes the invite fail.
         userId = await findAuthUserId(supabase, row.email);
 
         if (!userId) {
@@ -169,24 +215,111 @@ async function importRows(
         userId = data.user?.id ?? null;
       }
     }
+  }
 
-    if (!userId) {
-      throw new Error(`${row.email}: Supabase did not return a user id.`);
-    }
+  if (!userId) {
+    throw new Error(`${row.email}: Supabase did not return a user id.`);
+  }
 
-    await supabase.from("profiles").upsert({
-      id: userId,
-      email: row.email,
-      full_name: row.fullName,
-      organization: "DigitalRCC Student",
-      account_status: "active",
+  const { error: upsertProfileError } = await supabase.from("profiles").upsert({
+    id: userId,
+    email: row.email,
+    full_name: row.fullName,
+    organization: "DigitalRCC Student",
+    account_status: "active",
+  });
+
+  if (upsertProfileError) {
+    throw new Error(`${row.email}: ${upsertProfileError.message}`);
+  }
+
+  const { error: roleError } = await supabase
+    .from("user_roles")
+    .upsert(
+      { user_id: userId, role_id: studentRoleId, assigned_by: actorId },
+      { onConflict: "user_id,role_id" },
+    );
+
+  if (roleError) {
+    throw new Error(`${row.email}: ${roleError.message}`);
+  }
+
+  return userId;
+}
+
+async function assertActiveImportCapacity(rows: StudentRow[]) {
+  const cohortNumber = getCurrentCohortNumber();
+
+  if (!cohortNumber) {
+    throw new Error("There is no active cohort window right now.");
+  }
+
+  const supabase = createAdminClient();
+  const [{ data: occupied, error: occupiedError }, { data: profiles, error }] =
+    await Promise.all([
+      supabase
+        .from("student_cohort_assignments")
+        .select("user_id, seat_number")
+        .eq("cohort_number", cohortNumber)
+        .neq("status", "cancelled")
+        .not("seat_number", "is", null),
+      supabase
+        .from("profiles")
+        .select("id, email")
+        .in(
+          "email",
+          rows.map((row) => row.email),
+        ),
+    ]);
+
+  if (occupiedError || error) {
+    throw new Error(
+      occupiedError?.message ?? error?.message ?? "Capacity check failed.",
+    );
+  }
+
+  const importedUserIds = new Set((profiles ?? []).map((row) => row.id));
+  const alreadySeated = (occupied ?? []).filter((row) =>
+    importedUserIds.has(row.user_id),
+  ).length;
+  const occupiedSeats = new Set(
+    (occupied ?? [])
+      .map((row) => row.seat_number)
+      .filter((seat): seat is number => typeof seat === "number"),
+  );
+  const requiredSeats = rows.length - alreadySeated;
+  const availableSeats = cohortConfig.seatsPerCohort - occupiedSeats.size;
+
+  if (requiredSeats > availableSeats) {
+    throw new Error(
+      `This file needs ${requiredSeats} student numbers, but the active cohort has ${availableSeats} available.`,
+    );
+  }
+}
+
+async function importRows(
+  rows: StudentRow[],
+  actorId: string,
+  source: "csv_import" | "manual_entry",
+  selectedCohort: number | null,
+): Promise<ImportResult> {
+  const env = readServerEnv();
+  const supabase = createAdminClient();
+  const studentRoleId = await getStudentRoleId(supabase);
+
+  const result: ImportResult = { queued: 0, alreadyQueued: 0 };
+
+  for (const row of rows) {
+    const cohortNumber = resolveCohortNumber(row, selectedCohort);
+    const schedule = getCohortSchedule(cohortNumber);
+    const userId = await ensureStudentAccount({
+      actorId,
+      mode: "invite",
+      redirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      row,
+      studentRoleId,
+      supabase,
     });
-    await supabase
-      .from("user_roles")
-      .upsert(
-        { user_id: userId, role_id: studentRole.id, assigned_by: actorId },
-        { onConflict: "user_id,role_id" },
-      );
 
     const { alreadyQueued } = await queueUserForCohort(
       userId,
@@ -227,6 +360,39 @@ async function importRows(
   return result;
 }
 
+async function importActiveRows(
+  rows: StudentRow[],
+  actorId: string,
+): Promise<ActiveImportResult> {
+  await assertActiveImportCapacity(rows);
+
+  const supabase = createAdminClient();
+  const studentRoleId = await getStudentRoleId(supabase);
+  const result: ActiveImportResult = { activated: 0, alreadyActive: 0 };
+
+  for (const row of rows) {
+    const userId = await ensureStudentAccount({
+      actorId,
+      mode: "silent",
+      row,
+      studentRoleId,
+      supabase,
+    });
+    const { alreadyActive } = await activateUserForCurrentCohort(
+      userId,
+      actorId,
+    );
+
+    if (alreadyActive) {
+      result.alreadyActive += 1;
+    } else {
+      result.activated += 1;
+    }
+  }
+
+  return result;
+}
+
 function summarize(result: ImportResult) {
   const parts = [`Queued ${result.queued} students`];
 
@@ -235,6 +401,49 @@ function summarize(result: ImportResult) {
   }
 
   return `${parts.join(", ")}. Student numbers are assigned at 1:00 AM Eastern on the cohort start date.`;
+}
+
+function summarizeActive(result: ActiveImportResult) {
+  const parts = [`Activated ${result.activated} students without email`];
+
+  if (result.alreadyActive) {
+    parts.push(`${result.alreadyActive} were already active`);
+  }
+
+  return `${parts.join(", ")}.`;
+}
+
+/** Imports current students for operational testing without sending invitations. */
+export async function importActiveCsvAction(formData: FormData) {
+  const { user } = await requireManager();
+  const file = formData.get("csvFile");
+
+  if (!(file instanceof File) || file.size === 0) {
+    redirect(`/admin/import?error=${message("Upload a CSV file.")}`);
+  }
+
+  let result: ActiveImportResult;
+
+  try {
+    const rows = parseParticipantCsv(await file.text());
+
+    if (rows.length === 0) {
+      throw new Error("No participant rows with a name and email were found.");
+    }
+
+    result = await importActiveRows(rows, user.id);
+  } catch (error) {
+    redirect(
+      `/admin/import?error=${message(error instanceof Error ? error.message : "Import failed.")}`,
+    );
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/queue");
+  revalidatePath("/student");
+  revalidatePath("/student/queue");
+  revalidatePath("/student/labs");
+  redirect(`/admin/import?message=${message(summarizeActive(result))}`);
 }
 
 export async function importCsvAction(formData: FormData) {

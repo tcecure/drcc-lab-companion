@@ -4,6 +4,8 @@ import {
   cohortConfig,
   getCohortNumberForStartDate,
   getCohortSchedule,
+  getCurrentCohortNumber,
+  getFirstAvailableSeat,
   getLabIdentity,
   getPodName,
 } from "@/lib/cohorts";
@@ -43,6 +45,27 @@ describe("cohort calendar", () => {
     expect(getCohortNumberForStartDate("2026-09-06")).toBe(2);
     expect(getCohortNumberForStartDate("2026-09-07")).toBe(3);
     expect(getCohortNumberForStartDate("2099-01-01")).toBeNull();
+  });
+
+  it("finds the active cohort from its access window", () => {
+    expect(getCurrentCohortNumber(new Date("2026-08-18T12:00:00.000Z"))).toBe(
+      1,
+    );
+    expect(getCurrentCohortNumber(new Date("2026-08-15T12:00:00.000Z"))).toBe(
+      null,
+    );
+  });
+
+  it("assigns the lowest available student number", () => {
+    expect(getFirstAvailableSeat([1, 2, 4])).toBe(3);
+    expect(
+      getFirstAvailableSeat(
+        Array.from(
+          { length: cohortConfig.seatsPerCohort },
+          (_, index) => index + 1,
+        ),
+      ),
+    ).toBeNull();
   });
 
   it("derives the pod and lab username from the student number", () => {

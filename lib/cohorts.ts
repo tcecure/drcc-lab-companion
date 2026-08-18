@@ -116,6 +116,26 @@ export function getNextCohortNumber(now = new Date()) {
   return null;
 }
 
+/** The cohort whose access window contains `now`. */
+export function getCurrentCohortNumber(now = new Date()) {
+  for (
+    let cohortNumber = 1;
+    cohortNumber <= cohortConfig.lastCohortNumber;
+    cohortNumber += 1
+  ) {
+    const schedule = getCohortSchedule(cohortNumber);
+
+    if (
+      new Date(schedule.accessStartsAt) <= now &&
+      now < new Date(schedule.accessEndsAt)
+    ) {
+      return cohortNumber;
+    }
+  }
+
+  return null;
+}
+
 /** The cohort a lab start date (e.g. the registration form date) belongs to. */
 export function getCohortNumberForStartDate(dateIso: string) {
   for (
@@ -150,6 +170,25 @@ export function getLabIdentity(seatNumber: number) {
     labUsername: `student${suffix}`,
     podName: getPodName(seatNumber),
   };
+}
+
+export function getFirstAvailableSeat(occupiedSeats: Iterable<number | null>) {
+  const occupied = new Set(
+    [...occupiedSeats].filter(
+      (seat): seat is number =>
+        typeof seat === "number" &&
+        seat >= 1 &&
+        seat <= cohortConfig.seatsPerCohort,
+    ),
+  );
+
+  for (let seat = 1; seat <= cohortConfig.seatsPerCohort; seat += 1) {
+    if (!occupied.has(seat)) {
+      return seat;
+    }
+  }
+
+  return null;
 }
 
 export function formatCohortStartDate(startDate: string) {
@@ -223,6 +262,108 @@ export async function queueUserForCohort(
   }
 
   return { assignment: data, alreadyQueued: false };
+}
+
+/**
+ * Adds a current student directly to the active cohort without entering the
+ * notification workflow. Used only by the explicit silent testing import.
+ */
+export async function activateUserForCurrentCohort(
+  userId: string,
+  actorId: string,
+  now = new Date(),
+) {
+  const cohortNumber = getCurrentCohortNumber(now);
+
+  if (!cohortNumber) {
+    throw new Error("There is no active cohort window right now.");
+  }
+
+  const supabase = createAdminClient();
+  const schedule = getCohortSchedule(cohortNumber);
+  const { data: existing, error: existingError } = await supabase
+    .from("student_cohort_assignments")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (
+    existing?.cohort_number === cohortNumber &&
+    existing.seat_number !== null &&
+    existing.status === "active"
+  ) {
+    return { assignment: existing, alreadyActive: true };
+  }
+
+  let seatNumber =
+    existing?.cohort_number === cohortNumber && existing.status !== "cancelled"
+      ? existing.seat_number
+      : null;
+
+  if (seatNumber === null) {
+    const { data: occupied, error: occupiedError } = await supabase
+      .from("student_cohort_assignments")
+      .select("seat_number")
+      .eq("cohort_number", cohortNumber)
+      .neq("status", "cancelled")
+      .not("seat_number", "is", null);
+
+    if (occupiedError) {
+      throw new Error(occupiedError.message);
+    }
+
+    seatNumber = getFirstAvailableSeat(
+      (occupied ?? []).map((row) => row.seat_number),
+    );
+  }
+
+  if (seatNumber === null) {
+    throw new Error(`Cohort ${cohortNumber} has no free student numbers.`);
+  }
+
+  const identity = getLabIdentity(seatNumber);
+  const sameCohort = existing?.cohort_number === cohortNumber;
+  const values = {
+    source: "silent_active_import",
+    cohort_number: cohortNumber,
+    seat_number: seatNumber,
+    lab_username: identity.labUsername,
+    pod_name: identity.podName,
+    access_starts_at:
+      sameCohort && existing
+        ? existing.access_starts_at
+        : schedule.accessStartsAt,
+    access_ends_at:
+      sameCohort && existing ? existing.access_ends_at : schedule.accessEndsAt,
+    notification_send_at: schedule.assignmentRunAt,
+    status: "active" as const,
+    credential_status: existing?.credential_status ?? "pending_rotation",
+    credential_version: existing?.credential_version ?? 0,
+    notified_at: null,
+    created_by: actorId,
+  };
+  const { data, error } = existing
+    ? await supabase
+        .from("student_cohort_assignments")
+        .update(values)
+        .eq("id", existing.id)
+        .select("*")
+        .single()
+    : await supabase
+        .from("student_cohort_assignments")
+        .insert({ ...values, user_id: userId })
+        .select("*")
+        .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { assignment: data, alreadyActive: false };
 }
 
 /**
