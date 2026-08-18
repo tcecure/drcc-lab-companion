@@ -88,6 +88,36 @@ function resolveCohortNumber(row: StudentRow, selected: number | null) {
   return cohortNumber;
 }
 
+async function findAuthUserId(
+  supabase: ReturnType<typeof createAdminClient>,
+  email: string,
+) {
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const match = data.users.find(
+      (user) => user.email?.toLowerCase() === email,
+    );
+
+    if (match) {
+      return match.id;
+    }
+
+    if (data.users.length < 200) {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 async function importRows(
   rows: StudentRow[],
   actorId: string,
@@ -128,10 +158,16 @@ async function importRows(
       );
 
       if (error) {
-        throw new Error(`${row.email}: ${error.message}`);
-      }
+        // An auth user can already exist without a profile row (e.g. a
+        // self-service access request), which makes the invite fail.
+        userId = await findAuthUserId(supabase, row.email);
 
-      userId = data.user?.id ?? null;
+        if (!userId) {
+          throw new Error(`${row.email}: ${error.message}`);
+        }
+      } else {
+        userId = data.user?.id ?? null;
+      }
     }
 
     if (!userId) {

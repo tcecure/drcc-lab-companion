@@ -174,14 +174,15 @@ export async function queueUserForCohort(
   source = "manual_entry",
 ) {
   const supabase = createAdminClient();
+  // student_cohort_assignments is unique on user_id, so a cancelled row has to
+  // be re-queued in place rather than inserted alongside.
   const { data: existing } = await supabase
     .from("student_cohort_assignments")
     .select("*")
     .eq("user_id", userId)
-    .neq("status", "cancelled")
     .maybeSingle();
 
-  if (existing) {
+  if (existing && existing.status !== "cancelled") {
     return { assignment: existing, alreadyQueued: true };
   }
 
@@ -190,25 +191,32 @@ export async function queueUserForCohort(
   }
 
   const schedule = getCohortSchedule(cohortNumber);
-  const { data, error } = await supabase
-    .from("student_cohort_assignments")
-    .insert({
-      user_id: userId,
-      source,
-      cohort_number: schedule.cohortNumber,
-      seat_number: null,
-      lab_username: null,
-      pod_name: null,
-      access_starts_at: schedule.accessStartsAt,
-      access_ends_at: schedule.accessEndsAt,
-      notification_send_at: schedule.assignmentRunAt,
-      status: "queued",
-      credential_status: "pending_rotation",
-      credential_version: 0,
-      created_by: actorId,
-    })
-    .select("*")
-    .single();
+  const values = {
+    source,
+    cohort_number: schedule.cohortNumber,
+    seat_number: null,
+    lab_username: null,
+    pod_name: null,
+    access_starts_at: schedule.accessStartsAt,
+    access_ends_at: schedule.accessEndsAt,
+    notification_send_at: schedule.assignmentRunAt,
+    status: "queued" as const,
+    credential_status: "pending_rotation" as const,
+    credential_version: 0,
+    created_by: actorId,
+  };
+  const { data, error } = existing
+    ? await supabase
+        .from("student_cohort_assignments")
+        .update({ ...values, notified_at: null })
+        .eq("id", existing.id)
+        .select("*")
+        .single()
+    : await supabase
+        .from("student_cohort_assignments")
+        .insert({ ...values, user_id: userId })
+        .select("*")
+        .single();
 
   if (error) {
     throw new Error(error.message);
