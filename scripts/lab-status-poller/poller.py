@@ -40,7 +40,10 @@ RESOURCE_FIELDS = ("id", "name", "node", "status", "type", "vmid")
 
 def ssl_context() -> ssl.SSLContext:
     """Verifies against the Proxmox CA when given; the API cert is not public."""
-    if VERIFY_TLS and VERIFY_TLS.lower() not in {"false", "0", "no"}:
+    if not VERIFY_TLS:
+        return ssl.create_default_context()
+
+    if VERIFY_TLS.lower() not in {"false", "0", "no"}:
         context = ssl.create_default_context(cafile=VERIFY_TLS)
         # The PVE Cluster Manager CA omits the keyUsage extension, which OpenSSL's
         # strict profile (default from Python 3.13) rejects. Chain, hostname, and
