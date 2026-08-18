@@ -955,6 +955,31 @@ export type Database = {
         };
         Relationships: [];
       };
+      lab_status_snapshots: {
+        Row: {
+          id: number;
+          checked_at: string;
+          source: string;
+          nodes: Json;
+          resources: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          checked_at?: string;
+          source?: string;
+          nodes?: Json;
+          resources?: Json;
+          created_at?: string;
+        };
+        Update: {
+          checked_at?: string;
+          source?: string;
+          nodes?: Json;
+          resources?: Json;
+        };
+        Relationships: [];
+      };
       provisioning_jobs: {
         Row: {
           id: string;

@@ -1,0 +1,19 @@
+[Unit]
+Description=DRCC lab health poller (read-only Proxmox -> my.digitalrcc.com)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=drcc-monitor
+EnvironmentFile=/etc/drcc/lab-status-poller.env
+ExecStart=/usr/bin/python3 /opt/drcc/lab-status-poller/poller.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
