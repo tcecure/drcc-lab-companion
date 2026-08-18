@@ -4,61 +4,34 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireManager } from "@/lib/auth";
-import { assignUserToNextCohort } from "@/lib/cohorts";
+import { runCohortAssignment } from "@/lib/cohort-runner";
+import {
+  formatCohortStartDate,
+  getCohortNumberForStartDate,
+  getCohortSchedule,
+  getNextCohortNumber,
+  queueUserForCohort,
+} from "@/lib/cohorts";
 import { readServerEnv } from "@/lib/env";
+import {
+  processQueuedEmails,
+  queueEmail,
+  renderQueueConfirmation,
+} from "@/lib/notifications";
+import {
+  cleanEmail,
+  parseParticipantCsv,
+  type StudentRow,
+} from "@/lib/participants";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-type StudentRow = {
-  fullName: string;
-  email: string;
+type ImportResult = {
+  queued: number;
+  alreadyQueued: number;
 };
 
 function message(input: string) {
   return encodeURIComponent(input);
-}
-
-function cleanEmail(input: string) {
-  return input.trim().toLowerCase();
-}
-
-function parseCsv(text: string): StudentRow[] {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim());
-  const header =
-    lines
-      .shift()
-      ?.split(",")
-      .map((item) => item.trim().toLowerCase()) ?? [];
-  const firstNameIndex = header.findIndex((name) =>
-    ["first name", "firstname", "first"].includes(name),
-  );
-  const lastNameIndex = header.findIndex((name) =>
-    ["last name", "lastname", "last"].includes(name),
-  );
-  const nameIndex = header.findIndex((name) =>
-    ["name", "full name", "fullname", "participant name"].includes(name),
-  );
-  const emailIndex = header.findIndex((name) =>
-    ["email", "email address", "participant email"].includes(name),
-  );
-
-  if (emailIndex < 0 || (nameIndex < 0 && firstNameIndex < 0)) {
-    throw new Error(
-      "CSV needs email plus either name or first/last name columns.",
-    );
-  }
-
-  return lines
-    .map((line) =>
-      line.split(",").map((item) => item.trim().replace(/^"|"$/g, "")),
-    )
-    .map((cols) => ({
-      email: cleanEmail(cols[emailIndex] ?? ""),
-      fullName:
-        nameIndex >= 0
-          ? (cols[nameIndex] ?? "")
-          : `${cols[firstNameIndex] ?? ""} ${cols[lastNameIndex] ?? ""}`.trim(),
-    }))
-    .filter((row) => row.email && row.fullName);
 }
 
 function parseManual(formData: FormData): StudentRow[] {
@@ -75,18 +48,52 @@ function parseManual(formData: FormData): StudentRow[] {
         throw new Error("Every manual row needs both a name and email.");
       }
 
-      rows.push({ fullName, email });
+      rows.push({ fullName, email, labStartDate: null });
     }
   }
 
   return rows;
 }
 
+function readSelectedCohort(formData: FormData) {
+  const raw = String(formData.get("cohortNumber") ?? "").trim();
+
+  if (!raw || raw === "auto") {
+    return null;
+  }
+
+  const cohortNumber = Number(raw);
+
+  if (!Number.isInteger(cohortNumber) || cohortNumber < 1) {
+    throw new Error("Select a valid cohort.");
+  }
+
+  return cohortNumber;
+}
+
+function resolveCohortNumber(row: StudentRow, selected: number | null) {
+  if (selected) {
+    return selected;
+  }
+
+  const fromRow = row.labStartDate
+    ? getCohortNumberForStartDate(row.labStartDate)
+    : null;
+  const cohortNumber = fromRow ?? getNextCohortNumber();
+
+  if (!cohortNumber) {
+    throw new Error("No cohort remains on the calendar for these students.");
+  }
+
+  return cohortNumber;
+}
+
 async function importRows(
   rows: StudentRow[],
   actorId: string,
   source: "csv_import" | "manual_entry",
-) {
+  selectedCohort: number | null,
+): Promise<ImportResult> {
   const env = readServerEnv();
   const supabase = createAdminClient();
   const { data: studentRole } = await supabase
@@ -99,9 +106,11 @@ async function importRows(
     throw new Error("Student role is missing in Supabase.");
   }
 
-  let imported = 0;
+  const result: ImportResult = { queued: 0, alreadyQueued: 0 };
 
   for (const row of rows) {
+    const cohortNumber = resolveCohortNumber(row, selectedCohort);
+    const schedule = getCohortSchedule(cohortNumber);
     const { data: profile } = await supabase
       .from("profiles")
       .select("id")
@@ -142,28 +151,54 @@ async function importRows(
         { user_id: userId, role_id: studentRole.id, assigned_by: actorId },
         { onConflict: "user_id,role_id" },
       );
-    const cohort = await assignUserToNextCohort(userId, actorId, source);
-    await supabase.from("email_jobs").insert({
-      user_id: userId,
-      template_name: "student_portal_invite",
+
+    const { alreadyQueued } = await queueUserForCohort(
+      userId,
+      cohortNumber,
+      actorId,
+      source,
+    );
+
+    if (alreadyQueued) {
+      result.alreadyQueued += 1;
+      continue;
+    }
+
+    const labStartDate = formatCohortStartDate(schedule.startDate);
+
+    await queueEmail({
+      userId,
       recipient: row.email,
-      subject: "DigitalRCC lab access details",
+      templateName: "student_lab_queue_confirmation",
+      content: renderQueueConfirmation({
+        fullName: row.fullName,
+        labStartDate,
+        portalUrl: env.NEXT_PUBLIC_APP_URL,
+      }),
       payload: {
-        actionUrl: `${env.NEXT_PUBLIC_APP_URL}/login`,
-        cohortNumber: cohort.cohort_number,
-        labUsername: cohort.lab_username,
-        podName: cohort.pod_name,
-        seatNumber: cohort.seat_number,
-        accessStartsAt: cohort.access_starts_at,
-        accessEndsAt: cohort.access_ends_at,
+        cohortNumber,
+        labStartDate,
+        accessStartsAt: schedule.accessStartsAt,
+        accessEndsAt: schedule.accessEndsAt,
+        actionUrl: `${env.NEXT_PUBLIC_APP_URL}/student/queue`,
       },
-      rendered_text: `Your DigitalRCC lab access is scheduled for cohort ${cohort.cohort_number}, ${cohort.pod_name}. Lab username: ${cohort.lab_username}.`,
-      status: "queued",
     });
-    imported += 1;
+    result.queued += 1;
   }
 
-  return imported;
+  await processQueuedEmails();
+
+  return result;
+}
+
+function summarize(result: ImportResult) {
+  const parts = [`Queued ${result.queued} students`];
+
+  if (result.alreadyQueued) {
+    parts.push(`${result.alreadyQueued} already had a queue entry`);
+  }
+
+  return `${parts.join(", ")}. Student numbers are assigned at 1:00 AM Eastern on the cohort start date.`;
 }
 
 export async function importCsvAction(formData: FormData) {
@@ -174,13 +209,20 @@ export async function importCsvAction(formData: FormData) {
     redirect(`/admin/import?error=${message("Upload a CSV file.")}`);
   }
 
-  let count: number;
+  let result: ImportResult;
 
   try {
-    count = await importRows(
-      parseCsv(await file.text()),
+    const rows = parseParticipantCsv(await file.text());
+
+    if (rows.length === 0) {
+      throw new Error("No participant rows with a name and email were found.");
+    }
+
+    result = await importRows(
+      rows,
       user.id,
       "csv_import",
+      readSelectedCohort(formData),
     );
   } catch (error) {
     redirect(
@@ -189,12 +231,13 @@ export async function importCsvAction(formData: FormData) {
   }
 
   revalidatePath("/admin");
-  redirect(`/admin/import?message=${message(`Imported ${count} students.`)}`);
+  revalidatePath("/admin/queue");
+  redirect(`/admin/import?message=${message(summarize(result))}`);
 }
 
 export async function importManualAction(formData: FormData) {
   const { user } = await requireManager();
-  let count: number;
+  let result: ImportResult;
 
   try {
     const rows = parseManual(formData);
@@ -203,7 +246,12 @@ export async function importManualAction(formData: FormData) {
       throw new Error("Add at least one student.");
     }
 
-    count = await importRows(rows, user.id, "manual_entry");
+    result = await importRows(
+      rows,
+      user.id,
+      "manual_entry",
+      readSelectedCohort(formData),
+    );
   } catch (error) {
     redirect(
       `/admin/import?error=${message(error instanceof Error ? error.message : "Import failed.")}`,
@@ -211,5 +259,29 @@ export async function importManualAction(formData: FormData) {
   }
 
   revalidatePath("/admin");
-  redirect(`/admin/import?message=${message(`Imported ${count} students.`)}`);
+  revalidatePath("/admin/queue");
+  redirect(`/admin/import?message=${message(summarize(result))}`);
+}
+
+/** Runs the scheduled student-number assignment on demand from the admin queue. */
+export async function runCohortAssignmentAction() {
+  await requireManager();
+
+  let assignedCount = 0;
+
+  try {
+    const result = await runCohortAssignment();
+
+    assignedCount = result.assigned;
+  } catch (error) {
+    redirect(
+      `/admin/queue?error=${message(error instanceof Error ? error.message : "Assignment run failed.")}`,
+    );
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/queue");
+  redirect(
+    `/admin/queue?message=${message(`Assigned ${assignedCount} student numbers.`)}`,
+  );
 }

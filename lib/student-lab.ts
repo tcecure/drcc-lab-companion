@@ -23,16 +23,17 @@ export async function getStudentCohortAssignment(userId: string) {
 export function getStudentLabIdentity(
   assignment: StudentCohortAssignment | null,
 ) {
-  if (!assignment) {
+  if (!assignment || assignment.seat_number === null) {
     return null;
   }
 
-  const studentNumber = String(assignment.seat_number).padStart(2, "0");
+  const seatNumber = assignment.seat_number;
+  const studentNumber = String(seatNumber).padStart(2, "0");
   const podName = assignment.pod_name || `Pod${studentNumber}`;
   const labUsername = assignment.lab_username || `student${studentNumber}`;
-  const domainName = `acs-p${studentNumber}.local`;
-  const netbiosDomain = `ACS-P${studentNumber}`;
-  const gatewayAddress = `10.${50 + assignment.seat_number}.1.1`;
+  const domainName = "acs-p01.local";
+  const netbiosDomain = "ACS-P01";
+  const gatewayAddress = `10.51.${studentNumber}.1`;
 
   return {
     studentNumber,
@@ -42,11 +43,11 @@ export function getStudentLabIdentity(
     domainName,
     netbiosDomain,
     domainUsername: `${labUsername}@${domainName}`,
-    domainController: `${podName}-DC`,
+    domainController: `POD${studentNumber}-DC`,
     gatewayName: `${podName}-GW`,
     gatewayAddress,
-    podNetwork: `10.${50 + assignment.seat_number}.1.0/24`,
-    guacamoleUrl: `https://crc.guac.${studentNumber}.tcecure.com`,
+    podNetwork: `10.50.${studentNumber}.0/24`,
+    guacamoleUrl: "https://crc.guac.01.tcecure.com/#/",
     progressUrl: `https://training.status.tcecure.com/pod/${studentNumber}`,
     artifactsPath: `C:\\CyberLab\\${podName}\\`,
     scArtifactsPath: `C:\\CyberLab\\${podName}\\SC-Artifacts\\`,

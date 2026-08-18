@@ -47,7 +47,7 @@ export default async function AdminPage() {
     <AppShell roles={roles} title="Admin Overview">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <MetricCard
-          helper="Students waiting for the next available cohort."
+          helper="Students queued and waiting for a student number."
           label="Queue Status"
           value={queuedStudents ? `${queuedStudents} waiting` : "No waitlist"}
         />
@@ -58,7 +58,7 @@ export default async function AdminPage() {
           value={active}
         />
         <MetricCard
-          helper="Students assigned to a future cohort seat."
+          helper="Awaiting the 1:00 AM Eastern assignment run."
           label="Queued Students"
           value={queuedStudents ?? 0}
         />

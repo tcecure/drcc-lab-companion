@@ -48,10 +48,16 @@ export default async function StudentPage() {
         <MetricCard
           helper="Your current lab cohort status."
           label="Queue Status"
-          value={assignment?.status ?? "Not queued"}
+          value={
+            assignment
+              ? assignment.seat_number === null
+                ? "In queue"
+                : assignment.status
+              : "Not queued"
+          }
         />
         <MetricCard
-          helper="Assigned lab seat for hands-on access."
+          helper="Assigned at 1:00 AM Eastern on your session start date."
           label="Seat"
           value={identity ? identity.podName : "Pending"}
         />

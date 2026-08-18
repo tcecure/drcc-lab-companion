@@ -6,6 +6,7 @@ import {
   importManualAction,
 } from "@/lib/actions/import-students";
 import { requireManager } from "@/lib/auth";
+import { formatCohortStartDate, listCohortOptions } from "@/lib/cohorts";
 
 type ImportPageProps = {
   searchParams: Promise<{ error?: string; message?: string }>;
@@ -14,6 +15,7 @@ type ImportPageProps = {
 export default async function ImportPage({ searchParams }: ImportPageProps) {
   const { roles } = await requireManager();
   const params = await searchParams;
+  const cohorts = listCohortOptions();
 
   return (
     <AppShell roles={roles} title="Import Students">
@@ -27,13 +29,29 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
           {params.message}
         </p>
       ) : null}
+      <Card eyebrow="How Intake Works" title="Queue first, numbers later">
+        <p className="text-sm leading-6 text-slate-300">
+          Imported students are added to the lab queue and emailed a
+          confirmation naming the session start date. Student numbers, pods, and
+          lab usernames are assigned automatically at 1:00 AM Eastern on the
+          cohort start date, then a second email delivers portal access.
+        </p>
+      </Card>
       <section className="grid gap-4 xl:grid-cols-2">
         <Card eyebrow="CSV Upload" title="Upload participant export">
           <form action={importCsvAction} className="grid gap-4">
-            <input className="input" name="csvFile" required type="file" />
+            <input
+              accept=".csv,text/csv"
+              className="input"
+              name="csvFile"
+              required
+              type="file"
+            />
+            <CohortSelect cohorts={cohorts} />
             <p className="text-sm leading-6 text-slate-300">
-              Accepts the current participant CSV export and extracts name plus
-              email.
+              Only Name (or First / Last Name), Email, and the booking start
+              time are read from the participant export; every other column is
+              ignored.
             </p>
             <SubmitButton>Upload CSV</SubmitButton>
           </form>
@@ -55,10 +73,34 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
                 />
               </div>
             ))}
+            <CohortSelect cohorts={cohorts} />
             <SubmitButton>Import manual entries</SubmitButton>
           </form>
         </Card>
       </section>
     </AppShell>
+  );
+}
+
+function CohortSelect({
+  cohorts,
+}: {
+  cohorts: { cohortNumber: number; startDate: string }[];
+}) {
+  return (
+    <label className="grid gap-2 text-sm text-slate-300">
+      Cohort
+      <select className="input" defaultValue="auto" name="cohortNumber">
+        <option value="auto">
+          Match each student to their form date (next cohort if blank)
+        </option>
+        {cohorts.map((cohort) => (
+          <option key={cohort.cohortNumber} value={cohort.cohortNumber}>
+            Cohort {cohort.cohortNumber} — starts{" "}
+            {formatCohortStartDate(cohort.startDate)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
