@@ -16,7 +16,10 @@ const envSchema = z.object({
   PROXMOX_API_TOKEN_ID: z.string().optional(),
   PROXMOX_API_TOKEN_SECRET: z.string().optional(),
   PROXMOX_EXPECTED_NODES: z.string().optional(),
+  PROXMOX_CORE_DC_RESOURCES: z.string().optional(),
   PROXMOX_EXPECTED_PODS: z.string().optional(),
+  LAB_STATUS_INGEST_SECRET: z.string().optional(),
+  LAB_STATUS_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(180),
 });
 
 export type ServerEnv = z.infer<typeof envSchema>;
@@ -66,6 +69,9 @@ export function readServerEnv() {
     PROXMOX_API_TOKEN_ID: value(process.env.PROXMOX_API_TOKEN_ID),
     PROXMOX_API_TOKEN_SECRET: value(process.env.PROXMOX_API_TOKEN_SECRET),
     PROXMOX_EXPECTED_NODES: value(process.env.PROXMOX_EXPECTED_NODES),
+    PROXMOX_CORE_DC_RESOURCES: value(process.env.PROXMOX_CORE_DC_RESOURCES),
     PROXMOX_EXPECTED_PODS: value(process.env.PROXMOX_EXPECTED_PODS),
+    LAB_STATUS_INGEST_SECRET: value(process.env.LAB_STATUS_INGEST_SECRET),
+    LAB_STATUS_MAX_AGE_SECONDS: value(process.env.LAB_STATUS_MAX_AGE_SECONDS),
   });
 }

@@ -1,67 +1,31 @@
 import "server-only";
 
 import { readServerEnv } from "@/lib/env";
+import {
+  parseExpectedPods,
+  parseList,
+  summarizeLabStatus,
+  unknownStatus,
+  type LabStatusExpectations,
+  type LabStatusSnapshot,
+  type ProxmoxNodeRow,
+  type ProxmoxResourceRow,
+} from "@/lib/proxmox/health";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-export type LabStatusColor = "green" | "yellow" | "red" | "gray";
+export type {
+  LabStatusColor,
+  LabStatusSummary,
+} from "@/lib/proxmox/health";
 
-type ProxmoxNode = {
-  node: string;
-  status?: string;
-};
+function expectations(): LabStatusExpectations {
+  const env = readServerEnv();
 
-type ProxmoxResource = {
-  id?: string;
-  name?: string;
-  node?: string;
-  status?: string;
-  type?: string;
-  vmid?: number;
-};
-
-export type LabStatusSummary = {
-  color: LabStatusColor;
-  configured: boolean;
-  label: string;
-  detail: string;
-  nodes: Array<{ name: string; online: boolean; status: string }>;
-  pods: Array<{ name: string; online: boolean; status: string; node?: string }>;
-  checkedAt: string;
-};
-
-function list(input: string | undefined) {
-  return (input ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function missingConfig(): LabStatusSummary {
   return {
-    checkedAt: new Date().toISOString(),
-    color: "gray",
-    configured: false,
-    detail:
-      "Add Proxmox status environment variables to enable live lab health.",
-    label: "Not configured",
-    nodes: [],
-    pods: [],
+    coreDCs: parseList(env.PROXMOX_CORE_DC_RESOURCES),
+    nodes: parseList(env.PROXMOX_EXPECTED_NODES),
+    pods: parseExpectedPods(env.PROXMOX_EXPECTED_PODS),
   };
-}
-
-function statusLabel(color: LabStatusColor) {
-  if (color === "green") {
-    return "Online";
-  }
-
-  if (color === "yellow") {
-    return "Pods degraded";
-  }
-
-  if (color === "red") {
-    return "DC down";
-  }
-
-  return "Unknown";
 }
 
 async function proxmoxGet<T>(path: string) {
@@ -81,6 +45,7 @@ async function proxmoxGet<T>(path: string) {
     headers: {
       Authorization: `PVEAPIToken=${env.PROXMOX_API_TOKEN_ID}=${env.PROXMOX_API_TOKEN_SECRET}`,
     },
+    signal: AbortSignal.timeout(8_000),
   });
 
   if (!response.ok) {
@@ -91,90 +56,110 @@ async function proxmoxGet<T>(path: string) {
   return body.data;
 }
 
-export async function getLabStatus(): Promise<LabStatusSummary> {
-  const env = readServerEnv();
-  const expectedNodes = list(env.PROXMOX_EXPECTED_NODES);
-  const expectedPods = list(env.PROXMOX_EXPECTED_PODS);
+async function readSnapshotFromDatabase(): Promise<LabStatusSnapshot | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("lab_status_snapshots")
+    .select("checked_at, nodes, resources, source")
+    .order("checked_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (
-    !env.PROXMOX_API_BASE_URL ||
-    !env.PROXMOX_API_TOKEN_ID ||
-    !env.PROXMOX_API_TOKEN_SECRET
-  ) {
-    return missingConfig();
+  if (error) {
+    throw new Error(error.message);
   }
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    checkedAt: data.checked_at,
+    nodes: (data.nodes ?? []) as ProxmoxNodeRow[],
+    resources: (data.resources ?? []) as ProxmoxResourceRow[],
+    source: data.source ?? "internal-poller",
+  };
+}
+
+async function readSnapshotFromProxmox(): Promise<LabStatusSnapshot> {
+  const [nodes, resources] = await Promise.all([
+    proxmoxGet<ProxmoxNodeRow[]>("/api2/json/nodes"),
+    proxmoxGet<ProxmoxResourceRow[]>("/api2/json/cluster/resources?type=vm"),
+  ]);
+
+  return {
+    checkedAt: new Date().toISOString(),
+    nodes,
+    resources,
+    source: "direct-api",
+  };
+}
+
+/**
+ * Reads lab health. The internal poller is preferred: the Proxmox management
+ * interface is not reachable from Vercel and must not be published on the
+ * internet, so the lab pushes snapshots to `/api/lab-status/ingest` instead.
+ * Direct API polling is only used when this process can reach Proxmox itself
+ * (a local developer on the lab network, or a future private tunnel).
+ */
+export async function getLabStatus() {
+  const env = readServerEnv();
+  const expected = expectations();
+  const hasDirectApi = Boolean(
+    env.PROXMOX_API_BASE_URL &&
+      env.PROXMOX_API_TOKEN_ID &&
+      env.PROXMOX_API_TOKEN_SECRET,
+  );
+
+  if (!expected.coreDCs.length && !expected.pods.length) {
+    return unknownStatus(
+      expected,
+      "Add PROXMOX_CORE_DC_RESOURCES and PROXMOX_EXPECTED_PODS to enable live lab health.",
+      { configured: false, source: "not-configured" },
+    );
+  }
+
+  let snapshot: LabStatusSnapshot | null = null;
+  let failure: string | null = null;
 
   try {
-    const [nodeRows, resources] = await Promise.all([
-      proxmoxGet<ProxmoxNode[]>("/api2/json/nodes"),
-      proxmoxGet<ProxmoxResource[]>("/api2/json/cluster/resources?type=vm"),
-    ]);
-    const nodeNames = expectedNodes.length
-      ? expectedNodes
-      : nodeRows.map((node) => node.node);
-    const nodes = nodeNames.map((name) => {
-      const found = nodeRows.find((node) => node.node === name);
+    snapshot = await readSnapshotFromDatabase();
 
-      return {
-        name,
-        online: found?.status === "online",
-        status: found?.status ?? "missing",
-      };
-    });
-    const pods = expectedPods.map((name) => {
-      const found = resources.find(
-        (resource) =>
-          resource.name === name ||
-          resource.id === name ||
-          String(resource.vmid ?? "") === name,
-      );
-
-      return {
-        name,
-        node: found?.node,
-        online: found?.status === "running",
-        status: found?.status ?? "missing",
-      };
-    });
-    const anyNodeDown = nodes.some((node) => !node.online);
-    const anyPodDown = pods.some((pod) => !pod.online);
-    const color: LabStatusColor = anyNodeDown
-      ? "red"
-      : anyPodDown
-        ? "yellow"
-        : "green";
-
-    return {
-      checkedAt: new Date().toISOString(),
-      color,
-      configured: true,
-      detail: anyNodeDown
-        ? "One or more expected DC nodes are offline or missing."
-        : anyPodDown
-          ? "Core DC nodes are online, but one or more pods need attention."
-          : "Expected DC nodes and pods are online.",
-      label: statusLabel(color),
-      nodes,
-      pods,
-    };
+    if (!snapshot) {
+      failure = "No lab health snapshot has been received from the lab poller yet.";
+    }
   } catch (error) {
-    return {
-      checkedAt: new Date().toISOString(),
-      color: "red",
-      configured: true,
-      detail:
-        error instanceof Error ? error.message : "Proxmox status check failed.",
-      label: "Check failed",
-      nodes: expectedNodes.map((name) => ({
-        name,
-        online: false,
-        status: "unknown",
-      })),
-      pods: expectedPods.map((name) => ({
-        name,
-        online: false,
-        status: "unknown",
-      })),
-    };
+    failure =
+      error instanceof Error ? error.message : "Snapshot lookup failed.";
   }
+
+  if (!snapshot && hasDirectApi) {
+    try {
+      snapshot = await readSnapshotFromProxmox();
+      failure = null;
+    } catch (error) {
+      failure =
+        error instanceof Error ? error.message : "Proxmox is unreachable.";
+    }
+  }
+
+  if (!snapshot) {
+    return unknownStatus(
+      expected,
+      `${failure ?? "Lab health is unavailable."} Status is unknown — this is not a confirmed outage.`,
+    );
+  }
+
+  const ageSeconds =
+    (Date.now() - new Date(snapshot.checkedAt).getTime()) / 1_000;
+
+  if (ageSeconds > env.LAB_STATUS_MAX_AGE_SECONDS) {
+    return unknownStatus(
+      expected,
+      `Last lab health report is ${Math.round(ageSeconds)}s old (limit ${env.LAB_STATUS_MAX_AGE_SECONDS}s). Status is unknown — this is not a confirmed outage.`,
+      { checkedAt: snapshot.checkedAt, source: snapshot.source },
+    );
+  }
+
+  return summarizeLabStatus(snapshot, expected);
 }

@@ -8,6 +8,14 @@ const colorClasses = {
 };
 
 export function LabStatusCard({ status }: { status: LabStatusSummary }) {
+  const pods = status.pods.flatMap((pod) =>
+    pod.components.map((component) => ({
+      ...component,
+      name:
+        pod.components.length > 1 ? `${pod.pod} · ${component.name}` : pod.pod,
+    })),
+  );
+
   return (
     <section className="card">
       <div className="flex items-start justify-between gap-4">
@@ -23,9 +31,12 @@ export function LabStatusCard({ status }: { status: LabStatusSummary }) {
         </span>
       </div>
       <p className="mt-5 text-sm leading-6 text-slate-300">{status.detail}</p>
+      <p className="mt-2 text-xs text-slate-400">
+        Checked {new Date(status.checkedAt).toLocaleString()} · {status.source}
+      </p>
       <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
-        <StatusGroup label="DC Nodes" rows={status.nodes} />
-        <StatusGroup label="Pods" rows={status.pods} />
+        <StatusGroup label="Core domain controllers" rows={status.coreDCs} />
+        <StatusGroup label="Pod components" rows={pods} />
       </div>
     </section>
   );
