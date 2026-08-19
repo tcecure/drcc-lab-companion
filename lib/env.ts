@@ -20,6 +20,8 @@ const envSchema = z.object({
   PROXMOX_EXPECTED_PODS: z.string().optional(),
   LAB_STATUS_INGEST_SECRET: z.string().optional(),
   LAB_STATUS_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(180),
+  TRAINING_TRACKER_BASE_URL: z.string().url().optional(),
+  TRAINING_TRACKER_API_TOKEN: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof envSchema>;
@@ -73,5 +75,7 @@ export function readServerEnv() {
     PROXMOX_EXPECTED_PODS: value(process.env.PROXMOX_EXPECTED_PODS),
     LAB_STATUS_INGEST_SECRET: value(process.env.LAB_STATUS_INGEST_SECRET),
     LAB_STATUS_MAX_AGE_SECONDS: value(process.env.LAB_STATUS_MAX_AGE_SECONDS),
+    TRAINING_TRACKER_BASE_URL: value(process.env.TRAINING_TRACKER_BASE_URL),
+    TRAINING_TRACKER_API_TOKEN: value(process.env.TRAINING_TRACKER_API_TOKEN),
   });
 }
