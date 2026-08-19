@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { Suspense } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { Card, MetricCard } from "@/components/card";
@@ -13,6 +14,31 @@ import { getPodProgress } from "@/lib/training-progress";
 
 export const dynamic = "force-dynamic";
 
+async function StudentProgressMetric({ podName }: { podName: string | null }) {
+  const progress = await getPodProgress(podName);
+
+  return (
+    <MetricCard
+      helper={
+        !progress
+          ? "Live progress appears once your labs are verified."
+          : progress.status === "unavailable"
+            ? "The tracker is temporarily unavailable; completed work is not affected."
+            : `${progress.completedModules} of ${progress.totalModules} lab families complete.`
+      }
+      href="/student/training"
+      label="Lab Progress"
+      value={
+        !progress
+          ? "Pending"
+          : progress.status === "unavailable"
+            ? "Unavailable"
+            : `${progress.overallPercentage}%`
+      }
+    />
+  );
+}
+
 export default async function StudentPage() {
   const user = await requireUser();
   const [roles, profile, assignment] = await Promise.all([
@@ -21,7 +47,6 @@ export default async function StudentPage() {
     getStudentCohortAssignment(user.id),
   ]);
   const identity = getStudentLabIdentity(assignment);
-  const progress = identity ? await getPodProgress(identity.podName) : null;
 
   return (
     <AppShell roles={roles} title="Student Dashboard">
@@ -70,24 +95,18 @@ export default async function StudentPage() {
           label="Access Window"
           value="14 days"
         />
-        <MetricCard
-          helper={
-            !progress
-              ? "Live progress appears once your labs are verified."
-              : progress.status === "unavailable"
-                ? "The tracker is temporarily unavailable; completed work is not affected."
-                : `${progress.completedModules} of ${progress.totalModules} lab families complete.`
+        <Suspense
+          fallback={
+            <MetricCard
+              helper="Loading the latest lab verification."
+              href="/student/training"
+              label="Lab Progress"
+              value="Loading"
+            />
           }
-          href="/student/training"
-          label="Lab Progress"
-          value={
-            !progress
-              ? "Pending"
-              : progress.status === "unavailable"
-                ? "Unavailable"
-                : `${progress.overallPercentage}%`
-          }
-        />
+        >
+          <StudentProgressMetric podName={identity?.podName ?? null} />
+        </Suspense>
       </section>
       <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
         <Card eyebrow="Account" title="Profile summary">
