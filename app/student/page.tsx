@@ -9,6 +9,9 @@ import {
   getStudentCohortAssignment,
   getStudentLabIdentity,
 } from "@/lib/student-lab";
+import { getPodProgress } from "@/lib/training-progress";
+
+export const dynamic = "force-dynamic";
 
 export default async function StudentPage() {
   const user = await requireUser();
@@ -18,6 +21,7 @@ export default async function StudentPage() {
   ]);
   const assignment = await getStudentCohortAssignment(user.id);
   const identity = getStudentLabIdentity(assignment);
+  const progress = identity ? await getPodProgress(identity.podName) : null;
 
   return (
     <AppShell roles={roles} title="Student Dashboard">
@@ -44,7 +48,7 @@ export default async function StudentPage() {
           </Link>
         </div>
       </Card>
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           helper="Your current lab cohort status."
           label="Queue Status"
@@ -65,6 +69,19 @@ export default async function StudentPage() {
           helper="Standard completion window once access begins."
           label="Access Window"
           value="14 days"
+        />
+        <MetricCard
+          helper={
+            progress && progress.status !== "unavailable"
+              ? `${progress.completedModules} of ${progress.totalModules} lab families complete.`
+              : "Live progress appears once your labs are verified."
+          }
+          label="Lab Progress"
+          value={
+            progress && progress.status !== "unavailable"
+              ? `${progress.overallPercentage}%`
+              : "Pending"
+          }
         />
       </section>
       <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
