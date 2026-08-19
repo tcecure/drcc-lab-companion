@@ -78,6 +78,7 @@ export default async function StudentPage() {
                 ? "The tracker is temporarily unavailable; completed work is not affected."
                 : `${progress.completedModules} of ${progress.totalModules} lab families complete.`
           }
+          href="/student/training"
           label="Lab Progress"
           value={
             !progress

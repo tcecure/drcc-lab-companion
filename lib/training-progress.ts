@@ -102,10 +102,10 @@ export async function getPodProgress(
   try {
     const url = new URL(`/api/v1/pods/${podNumber}/progress`, baseUrl);
     const response = await fetch(url, {
-      cache: "no-store",
       headers: {
         Authorization: `Bearer ${env.TRAINING_TRACKER_API_TOKEN}`,
       },
+      next: { revalidate: 45 },
       signal: AbortSignal.timeout(8_000),
     });
 
