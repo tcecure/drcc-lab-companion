@@ -9,27 +9,36 @@ const statusLabels: Record<ProgressStatus, string> = {
 
 const statusStyles: Record<ProgressStatus, string> = {
   not_started: "border-slate-300/30 bg-slate-300/10 text-slate-200",
-  in_progress: "border-cyan-300/30 bg-cyan-300/10 text-cyan-100",
-  completed: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
+  in_progress: "border-amber-300/30 bg-amber-300/10 text-amber-100",
+  completed: "border-cyan-300/30 bg-cyan-300/10 text-cyan-100",
   unavailable: "border-slate-300/30 bg-slate-300/10 text-slate-300",
 };
 
 export function ProgressBar({
+  label,
   percentage,
   status,
 }: {
+  label: string;
   percentage: number;
   status: ProgressStatus;
 }) {
   const fill =
     status === "completed"
-      ? "bg-emerald-300"
+      ? "bg-cyan-300"
       : status === "in_progress"
-        ? "bg-cyan-300"
+        ? "bg-amber-300"
         : "bg-slate-500";
 
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+    <div
+      aria-label={label}
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={percentage}
+      className="h-2 w-full overflow-hidden rounded-full bg-white/10"
+      role="progressbar"
+    >
       <div className={`h-full ${fill}`} style={{ width: `${percentage}%` }} />
     </div>
   );
@@ -72,6 +81,7 @@ export function TrainingProgressPanel({ progress }: { progress: PodProgress }) {
           <p className="text-3xl font-bold">{progress.overallPercentage}%</p>
         </div>
         <ProgressBar
+          label="Overall lab progress"
           percentage={progress.overallPercentage}
           status={progress.status}
         />
@@ -91,6 +101,7 @@ export function TrainingProgressPanel({ progress }: { progress: PodProgress }) {
               </div>
             </div>
             <ProgressBar
+              label={`${module.title} progress`}
               percentage={module.percentage}
               status={module.status}
             />

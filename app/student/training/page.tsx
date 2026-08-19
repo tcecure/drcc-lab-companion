@@ -15,8 +15,10 @@ export const dynamic = "force-dynamic";
 
 export default async function TrainingPage() {
   const user = await requireUser();
-  const roles = await getUserRoles(user.id);
-  const assignment = await getStudentCohortAssignment(user.id);
+  const [roles, assignment] = await Promise.all([
+    getUserRoles(user.id),
+    getStudentCohortAssignment(user.id),
+  ]);
   const identity = getStudentLabIdentity(assignment);
   const progress = identity ? await getPodProgress(identity.podName) : null;
 
@@ -35,11 +37,13 @@ export default async function TrainingPage() {
           title="Training progress"
         >
           <TrainingProgressPanel progress={progress} />
-          <p className="mt-6 text-sm text-slate-400">
-            Last verification run: {formatDateTime(progress.checkedAt)}.
-            Progress is graded from the evidence your labs produce, so it
-            updates after each verification run rather than instantly.
-          </p>
+          {progress.status !== "unavailable" ? (
+            <p className="mt-6 text-sm text-slate-400">
+              Last verification run: {formatDateTime(progress.checkedAt)}.
+              Progress is graded from the evidence your labs produce, so it
+              updates after each verification run rather than instantly.
+            </p>
+          ) : null}
           <Link className="button mt-5" href="/student/guides">
             Open lab guides
           </Link>

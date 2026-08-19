@@ -15,11 +15,11 @@ export const dynamic = "force-dynamic";
 
 export default async function StudentPage() {
   const user = await requireUser();
-  const [roles, profile] = await Promise.all([
+  const [roles, profile, assignment] = await Promise.all([
     getUserRoles(user.id),
     getProfile(user.id),
+    getStudentCohortAssignment(user.id),
   ]);
-  const assignment = await getStudentCohortAssignment(user.id);
   const identity = getStudentLabIdentity(assignment);
   const progress = identity ? await getPodProgress(identity.podName) : null;
 
@@ -72,15 +72,19 @@ export default async function StudentPage() {
         />
         <MetricCard
           helper={
-            progress && progress.status !== "unavailable"
-              ? `${progress.completedModules} of ${progress.totalModules} lab families complete.`
-              : "Live progress appears once your labs are verified."
+            !progress
+              ? "Live progress appears once your labs are verified."
+              : progress.status === "unavailable"
+                ? "The tracker is temporarily unavailable; completed work is not affected."
+                : `${progress.completedModules} of ${progress.totalModules} lab families complete.`
           }
           label="Lab Progress"
           value={
-            progress && progress.status !== "unavailable"
-              ? `${progress.overallPercentage}%`
-              : "Pending"
+            !progress
+              ? "Pending"
+              : progress.status === "unavailable"
+                ? "Unavailable"
+                : `${progress.overallPercentage}%`
           }
         />
       </section>

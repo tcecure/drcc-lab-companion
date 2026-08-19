@@ -49,6 +49,19 @@ describe("parsePodProgress", () => {
 
   it("rejects a payload describing a different pod", () => {
     expect(parsePodProgress("02", payload)).toBeNull();
+    expect(parsePodProgress("01", { ...payload, podName: "Pod02" })).toBeNull();
+  });
+
+  it("rejects malformed verification timestamps", () => {
+    expect(
+      parsePodProgress("01", { ...payload, checkedAt: "not-a-date" }),
+    ).toBeNull();
+    expect(
+      parsePodProgress("01", {
+        ...payload,
+        modules: [{ ...payload.modules[0], completedAt: "yesterday" }],
+      }),
+    ).toBeNull();
   });
 
   it("rejects out-of-range or non-integer percentages", () => {

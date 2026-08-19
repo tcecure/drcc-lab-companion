@@ -18,13 +18,13 @@ const moduleSchema = z.object({
   title: z.string().min(1),
   status: progressStatus,
   percentage,
-  completedAt: z.string().nullable().default(null),
+  completedAt: z.string().datetime().nullable().default(null),
 });
 
 const podProgressSchema = z.object({
   podName: z.string().min(1),
   studentNumber: z.string().min(1),
-  checkedAt: z.string().min(1),
+  checkedAt: z.string().datetime(),
   overallPercentage: percentage,
   completedModules: z.coerce.number().int().min(0),
   totalModules: z.coerce.number().int().min(0),
@@ -74,7 +74,11 @@ export function unavailableProgress(
 
 export function parsePodProgress(podNumber: string, body: unknown) {
   const parsed = podProgressSchema.safeParse(body);
-  if (!parsed.success || parsed.data.studentNumber !== podNumber) {
+  if (
+    !parsed.success ||
+    parsed.data.studentNumber !== podNumber ||
+    parsed.data.podName !== `Pod${podNumber}`
+  ) {
     return null;
   }
 
