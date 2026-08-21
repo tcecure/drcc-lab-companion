@@ -37,7 +37,7 @@ const studentNav: NavItem[] = [
   { href: "/student/training", icon: GraduationCap, label: "Training" },
   { href: "/student/notifications", icon: Bell, label: "Notifications" },
   { href: "/student/profile", icon: User, label: "Profile" },
-  { href: "/student/support", icon: HelpCircle, label: "Support" },
+  { href: "/support", icon: HelpCircle, label: "Support" },
 ];
 
 const adminNav: NavItem[] = [
