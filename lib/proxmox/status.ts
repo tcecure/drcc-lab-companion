@@ -87,6 +87,33 @@ export async function getLatestLabSnapshot() {
   }
 }
 
+/** Rolling telemetry used to estimate whether assigned pods are active or idle. */
+export async function getRecentLabSnapshots(windowMinutes = 15) {
+  const supabase = createAdminClient();
+  const since = new Date(
+    Date.now() - (windowMinutes + 2) * 60_000,
+  ).toISOString();
+  const { data, error } = await supabase
+    .from("lab_status_snapshots")
+    .select("checked_at, nodes, resources, source")
+    .gte("checked_at", since)
+    .order("checked_at", { ascending: false })
+    .limit(64);
+
+  if (error) {
+    return [];
+  }
+
+  return (data ?? []).map(
+    (snapshot): LabStatusSnapshot => ({
+      checkedAt: snapshot.checked_at,
+      nodes: (snapshot.nodes ?? []) as ProxmoxNodeRow[],
+      resources: (snapshot.resources ?? []) as ProxmoxResourceRow[],
+      source: snapshot.source ?? "internal-poller",
+    }),
+  );
+}
+
 async function readSnapshotFromProxmox(): Promise<LabStatusSnapshot> {
   const [nodes, resources] = await Promise.all([
     proxmoxGet<ProxmoxNodeRow[]>("/api2/json/nodes"),

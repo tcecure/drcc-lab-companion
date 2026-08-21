@@ -49,6 +49,25 @@ including state, CPU, memory, disk, uptime, network traffic, and disk I/O. The
 page continues to show availability when an older poller sends no utilization
 fields; missing values are labeled `Not reported`.
 
+## Student activity estimate
+
+The Lab Capacity page uses the same snapshots to calculate a rolling 15-minute
+activity estimate for each assigned pod. Meaningful network or disk counter
+movement, or sustained CPU use, reports **Active**. A running pod with a complete
+quiet window reports **Idle**. A pod with no running virtual machines reports
+**Offline**. Missing, stale, or incomplete telemetry reports **Unknown** rather
+than making a false idle claim.
+
+This is an infrastructure activity estimate, not proof that a student is at the
+keyboard. Windows services can produce background activity, and a student can
+read a guide without generating much VM activity. A future Guacamole session
+signal can refine the badge without changing the portal UI.
+
+The page refreshes its server-rendered activity data once per minute while the
+admin tab is visible. The estimate still covers a rolling 15-minute window; the
+short refresh interval simply lets a spot-check screen follow the poller's
+45-second reporting cadence.
+
 ## Inventory (observed 2026-08-18)
 
 `pve1` is a **standalone node** — `/etc/pve/corosync.conf` does not exist, so

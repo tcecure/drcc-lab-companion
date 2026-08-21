@@ -252,6 +252,39 @@ textarea {
   text-transform: capitalize;
 }
 
+.activity-pill {
+  display: inline-flex;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.25rem 0.6rem;
+}
+
+.activity-pill-active {
+  border-color: rgba(103, 232, 249, 0.34);
+  background: rgba(34, 211, 238, 0.14);
+  color: #cffafe;
+}
+
+.activity-pill-idle {
+  border-color: rgba(252, 211, 77, 0.34);
+  background: rgba(245, 158, 11, 0.14);
+  color: #fef3c7;
+}
+
+.activity-pill-offline {
+  border-color: rgba(253, 164, 175, 0.34);
+  background: rgba(244, 63, 94, 0.14);
+  color: #ffe4e6;
+}
+
+.activity-pill-unknown {
+  border-color: rgba(203, 213, 225, 0.24);
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     grid-template-columns: 1fr;
