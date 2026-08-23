@@ -20,7 +20,7 @@ export function KnownIssuesSummary() {
   return (
     <section
       aria-labelledby="known-issues-heading"
-      className="overflow-hidden rounded-lg border border-cyan-200/15 bg-slate-950/55 shadow-2xl shadow-slate-950/20"
+      className="overflow-hidden border-y border-cyan-200/15 bg-slate-950/35"
     >
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-cyan-200/10 p-5 sm:p-6">
         <div>
@@ -80,7 +80,7 @@ export function KnownIssuesSummary() {
 
 function SummaryMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="border-cyan-200/10 px-5 py-4 sm:border-r sm:last:border-r-0 sm:px-6">
+    <div className="border-b border-cyan-200/10 px-5 py-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0 sm:px-6">
       <dt className="text-xs font-bold uppercase text-cyan-100/60">{label}</dt>
       <dd className="mt-1 text-2xl font-bold text-white">{value}</dd>
     </div>
