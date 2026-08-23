@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getPodAddresses } from "@/lib/pod-addresses";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/types";
 
@@ -33,7 +34,7 @@ export function getStudentLabIdentity(
   const labUsername = assignment.lab_username || `student${studentNumber}`;
   const domainName = "acs-p01.local";
   const netbiosDomain = "ACS-P01";
-  const gatewayAddress = `10.51.${studentNumber}.1`;
+  const { gatewayAddress, podNetwork } = getPodAddresses(seatNumber);
 
   return {
     studentNumber,
@@ -46,7 +47,7 @@ export function getStudentLabIdentity(
     domainController: `POD${studentNumber}-DC`,
     gatewayName: `${podName}-GW`,
     gatewayAddress,
-    podNetwork: `10.50.${studentNumber}.0/24`,
+    podNetwork,
     guacamoleUrl: "https://crc.guac.01.tcecure.com/#/",
     progressUrl: `https://training.status.tcecure.com/pod/${studentNumber}`,
     artifactsPath: `C:\\CyberLab\\${podName}\\`,

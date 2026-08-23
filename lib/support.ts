@@ -18,15 +18,18 @@ export type ExpectedLabBehavior = {
   title: string;
 };
 
-export const supportContentLastUpdated = "August 20, 2026";
+export const supportContentLastUpdated = "August 22, 2026";
 
 export const currentLabNotices: CurrentLabNotice[] = [
   {
     area: "AC, IA, and SI labs",
-    commands: ["dsa.msc", "taskschd.msc"],
+    commands: [
+      'cmd /c "set __COMPAT_LAYER=RunAsInvoker&& start "" mmc.exe dsa.msc"',
+      "taskschd.msc",
+    ],
     guidance:
-      "Cancel the prompt. Open the Active Directory Users and Computers shortcut on your desktop instead. For Task Scheduler, open it directly with the Windows Run command listed below.",
-    note: "The lab guides have been corrected.",
+      "Cancel the prompt. Open the Active Directory Users and Computers shortcut on your desktop. If the shortcut is missing, run the first command below from Windows Run. For Task Scheduler, use the second command.",
+    note: "The AC guide and quick-start instructions have been corrected.",
     reason:
       "Student accounts are intentionally not administrators on the shared server, and Server Manager is not used by any lab.",
     symptom:

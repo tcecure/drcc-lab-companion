@@ -60,8 +60,8 @@ export default async function StudentQuickStartPage() {
                   Use the lab password delivered separately by your instructor.
                 </li>
                 <li>
-                  Use the Check Your Progress banner whenever you need current
-                  lab status.
+                  Select Login to open the list of connections assigned to your
+                  pod.
                 </li>
               </ol>
               <a
@@ -82,37 +82,41 @@ export default async function StudentQuickStartPage() {
               <Server className="text-cyan-300" size={24} />
               <ol className="mt-4 grid list-decimal gap-3 pl-5 text-sm leading-6 text-slate-300">
                 <li>
-                  Expand the <Value>{identity.podGroup}</Value> connection
-                  group.
+                  Find <Value>{identity.domainController}</Value> in your
+                  available connections.
                 </li>
                 <li>
-                  Open <Value>{identity.domainController}</Value>.
+                  Select the connection. Its remote desktop credentials are
+                  preconfigured, so no additional Windows login is required.
                 </li>
                 <li>
-                  Sign in as <Value>{identity.domainUsername}</Value> or{" "}
-                  <Value>
-                    {identity.netbiosDomain}\\{identity.labUsername}
-                  </Value>
-                  .
+                  Wait a few seconds for the Windows Server desktop to appear.
                 </li>
                 <li>
-                  Use domain <Value>{identity.domainName}</Value>; do not
-                  shorten it to ACS.
+                  Press <Value>Ctrl+Alt+Shift</Value> to open the Guacamole side
+                  menu when you need to return Home or switch connections.
                 </li>
               </ol>
             </Card>
 
-            <Card eyebrow="Step 3" title={`Connect to ${identity.gatewayName}`}>
+            <Card eyebrow="Step 3" title="Open the firewall for SC labs">
               <Gauge className="text-cyan-300" size={24} />
+              <ol className="mt-4 grid list-decimal gap-3 pl-5 text-sm leading-6 text-slate-300">
+                <li>
+                  Stay connected to <Value>{identity.domainController}</Value>.
+                </li>
+                <li>Open Edge or Firefox on the Windows desktop.</li>
+                <li>
+                  Go to <Value>http://{identity.gatewayAddress}</Value>.
+                </li>
+                <li>
+                  Sign in to pfSense with username <Value>admin</Value> and
+                  password <Value>pfsense</Value>.
+                </li>
+              </ol>
               <p className="mt-4 text-sm leading-6 text-slate-300">
-                Open {identity.gatewayName} directly from Guacamole for the
-                pfSense web interface, or launch its saved PuTTY session from{" "}
-                {identity.domainController}. The gateway address is{" "}
-                <Value>{identity.gatewayAddress}</Value>.
-              </p>
-              <p className="mt-4 text-sm leading-6 text-slate-300">
-                The gateway is the primary workspace for System &amp;
-                Communications Protection labs.
+                The old {identity.gatewayName} Guacamole tile is not used. The
+                supported path is the browser on {identity.domainController}.
               </p>
             </Card>
 
@@ -136,8 +140,10 @@ export default async function StudentQuickStartPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-400">Gateway</dt>
-                  <dd className="mt-2 font-bold">{identity.gatewayName}</dd>
+                  <dt className="text-slate-400">Firewall URL</dt>
+                  <dd className="mt-2 font-bold">
+                    http://{identity.gatewayAddress}
+                  </dd>
                 </div>
               </dl>
             </Card>
