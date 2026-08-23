@@ -18,7 +18,7 @@ export type ExpectedLabBehavior = {
   title: string;
 };
 
-export const supportContentLastUpdated = "August 22, 2026";
+export const supportContentLastUpdated = "August 23, 2026";
 
 export const currentLabNotices: CurrentLabNotice[] = [
   {
@@ -77,12 +77,14 @@ export const currentLabNotices: CurrentLabNotice[] = [
     title: "The domain password policy cannot be changed",
   },
   {
-    area: "IA M3-L3 and other password-setting labs",
+    area: "AC L2.1 and password-setting labs",
     guidance:
-      "Use at least 12 characters with uppercase and lowercase letters, a number, and a symbol. Do not reuse a recent password.",
+      "Use a unique password with at least 12 characters, including uppercase and lowercase letters, a number, and a symbol. Do not reuse a recent password. When an older guide refers to the password provided for your portal sign-in, create a separate password that meets this policy instead.",
     reason:
-      "Shorter or recently used passwords are rejected by the current domain policy; this is expected, not an error.",
-    title: "Password resets require stronger passwords",
+      "The hardened domain policy applies to every account created or updated in the lab. A rejection means the policy is working and does not indicate a problem with your account.",
+    symptom:
+      "Windows reports that the password does not meet the password policy requirements when you create an account or set a password.",
+    title: "The password does not meet the policy requirements",
   },
   {
     area: "SC firewall labs",
