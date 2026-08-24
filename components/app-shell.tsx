@@ -42,6 +42,7 @@ const studentNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { href: "/admin", icon: ShieldCheck, label: "Admin Overview" },
+  { href: "/admin/guides", icon: BookOpen, label: "Current Lab Guides" },
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
   { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals" },
   { href: "/admin/queue", icon: Users, label: "Student Queue" },
