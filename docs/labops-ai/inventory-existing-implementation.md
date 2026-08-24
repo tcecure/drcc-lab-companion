@@ -64,13 +64,14 @@ proposed, and they arrive as reviewed migrations — see ADR 0001.
 
 ## 4. DNS / TLS facts
 
-- `my.ai.digitalrcc.com` — **does not resolve today**. `digitalrcc.com` NS = `dns{1,2}.registrar-servers.com` (Namecheap); `my.digitalrcc.com` is a Vercel CNAME.
-- A four-label host is not covered by a `*.digitalrcc.com` wildcard, so it needs its own certificate (Let's Encrypt HTTP-01 or DNS-01 both work) — confirm the hostname before any record is created.
+- `labops.digitalrcc.com` — **does not resolve today**. `digitalrcc.com` NS = `dns{1,2}.registrar-servers.com` (Namecheap); `my.digitalrcc.com` is a Vercel CNAME.
+- Three labels, so a single `CNAME` at Namecheap is enough and Vercel issues the certificate; no wildcard is involved. See `checkpoint-dns-tls.md`.
 - The lab's own names (`crc.ai.tcecure.com`, `training.status.tcecure.com`) live under `tcecure.com` in Route 53 and resolve to the lab edge IP, which is where a self-hosted host record would have to point.
 
 ## 5. Model provider
 
-No AWS Bedrock credentials exist in the session/org secret store today (only SES SMTP
-users for the Wazuh relay). Bedrock therefore needs either an IAM principal with
-`bedrock:InvokeModel*` or an explicit decision to use a different provider; the gateway
-keeps the provider behind an interface either way.
+Decision: **OpenAI API** (Bedrock dropped; no AWS credentials are needed or requested).
+OpenHands calls the provider through LiteLLM, so the model is a provider-prefixed string
+(`openai/<model>`) and the key is `LLM_API_KEY` on the agent host. Provider and model are
+env-configured behind a gateway-side interface, so swapping providers later is
+configuration. See `checkpoint-openai-config.md`.
