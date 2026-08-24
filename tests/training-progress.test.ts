@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getPodTrackerPageUrl,
   parsePodProgress,
   podNumberFromPodName,
-  summarizeCohortProgress,
   unavailableProgress,
 } from "@/lib/training-progress";
 
@@ -93,30 +93,11 @@ describe("unavailableProgress", () => {
   });
 });
 
-describe("summarizeCohortProgress", () => {
-  it("summarizes reporting pods without treating outages as zero percent", () => {
-    const inProgress = parsePodProgress("01", payload);
-    const completed = parsePodProgress("02", {
-      ...payload,
-      podName: "Pod02",
-      studentNumber: "02",
-      overallPercentage: 100,
-      status: "completed",
-    });
-
-    expect(
-      summarizeCohortProgress([
-        inProgress,
-        completed,
-        unavailableProgress("03"),
-        null,
-      ]),
-    ).toEqual({
-      averagePercentage: 63,
-      completed: 1,
-      inProgress: 1,
-      notStarted: 0,
-      unavailable: 2,
-    });
+describe("getPodTrackerPageUrl", () => {
+  it("links directly to the existing tracker page for the assigned pod", () => {
+    expect(getPodTrackerPageUrl("Pod01")).toBe(
+      "https://training.status.tcecure.com/training/status/pod/01",
+    );
+    expect(getPodTrackerPageUrl("not-a-pod")).toBeNull();
   });
 });

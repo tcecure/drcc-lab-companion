@@ -38,14 +38,6 @@ export type ProgressStatus = z.infer<typeof progressStatus>;
 export type ProgressModule = z.infer<typeof moduleSchema>;
 export type PodProgress = z.infer<typeof podProgressSchema>;
 
-export type CohortProgressSummary = {
-  averagePercentage: number | null;
-  completed: number;
-  inProgress: number;
-  notStarted: number;
-  unavailable: number;
-};
-
 const trackerBaseUrl = "https://training.status.tcecure.com";
 
 export function podNumberFromPodName(podName: string | null | undefined) {
@@ -93,34 +85,18 @@ export function parsePodProgress(podNumber: string, body: unknown) {
   return parsed.data;
 }
 
-export function summarizeCohortProgress(
-  progressItems: readonly (PodProgress | null)[],
-): CohortProgressSummary {
-  const available = progressItems.filter((progress): progress is PodProgress =>
-    Boolean(progress && progress.status !== "unavailable"),
-  );
+export function getPodTrackerPageUrl(
+  podName: string | null | undefined,
+  baseUrl = trackerBaseUrl,
+) {
+  const podNumber = podNumberFromPodName(podName);
 
-  return {
-    averagePercentage: available.length
-      ? Math.round(
-          available.reduce(
-            (total, progress) => total + progress.overallPercentage,
-            0,
-          ) / available.length,
-        )
-      : null,
-    completed: available.filter(
-      (progress) =>
-        progress.status === "completed" || progress.overallPercentage === 100,
-    ).length,
-    inProgress: available.filter(
-      (progress) => progress.status === "in_progress",
-    ).length,
-    notStarted: available.filter(
-      (progress) => progress.status === "not_started",
-    ).length,
-    unavailable: progressItems.length - available.length,
-  };
+  return podNumber
+    ? new URL(
+        `/training/status/pod/${podNumber}`,
+        `${baseUrl.replace(/\/+$/, "")}/`,
+      ).toString()
+    : null;
 }
 
 export async function getPodProgress(

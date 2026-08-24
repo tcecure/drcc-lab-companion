@@ -1,50 +1,33 @@
-import { ChevronDown } from "lucide-react";
-import { Suspense } from "react";
+import { ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { AutoRefresh } from "@/components/auto-refresh";
-import { Card, MetricCard } from "@/components/card";
-import {
-  ProgressBar,
-  StatusPill,
-  TrainingProgressPanel,
-} from "@/components/training-progress";
+import { Card } from "@/components/card";
 import { requireManager } from "@/lib/auth";
 import { getCurrentCohortNumber } from "@/lib/cohorts";
-import { formatDateTime } from "@/lib/format";
+import { readServerEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  getPodProgress,
-  summarizeCohortProgress,
-  type PodProgress,
+  getPodTrackerPageUrl,
+  podNumberFromPodName,
 } from "@/lib/training-progress";
-import type { Database } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-type Assignment = Pick<
-  Database["public"]["Tables"]["student_cohort_assignments"]["Row"],
-  "access_ends_at" | "pod_name" | "seat_number" | "status" | "user_id"
->;
-
-type Profile = Pick<
-  Database["public"]["Tables"]["profiles"]["Row"],
-  "email" | "full_name" | "id"
->;
-
-type StudentProgressRecord = {
-  assignment: Assignment;
-  profile: Profile | null;
-  progress: PodProgress | null;
+type AdminProgressPageProps = {
+  searchParams: Promise<{ pod?: string }>;
 };
 
-export default async function AdminProgressPage() {
+export default async function AdminProgressPage({
+  searchParams,
+}: AdminProgressPageProps) {
   const { roles } = await requireManager();
   const supabase = createAdminClient();
+  const env = readServerEnv();
   const currentCohortNumber = getCurrentCohortNumber();
   const { data: assignments, error: assignmentError } = await supabase
     .from("student_cohort_assignments")
-    .select("user_id, pod_name, seat_number, status, access_ends_at")
+    .select("user_id, pod_name, seat_number, status")
     .eq("cohort_number", currentCohortNumber ?? -1)
     .neq("status", "cancelled")
     .not("seat_number", "is", null)
@@ -66,209 +49,134 @@ export default async function AdminProgressPage() {
     throw new Error(profileError.message);
   }
 
+  const profileById = new Map(
+    (profiles ?? []).map((profile) => [profile.id, profile]),
+  );
+  const roster = (assignments ?? []).flatMap((assignment) => {
+    const podNumber = podNumberFromPodName(assignment.pod_name);
+
+    return podNumber
+      ? [
+          {
+            assignment,
+            podNumber,
+            profile: profileById.get(assignment.user_id) ?? null,
+          },
+        ]
+      : [];
+  });
+  const params = await searchParams;
+  const requestedPod = podNumberFromPodName(
+    params.pod ? `Pod${params.pod}` : null,
+  );
+  const selectedPod = roster.some(
+    (student) => student.podNumber === requestedPod,
+  )
+    ? requestedPod
+    : (roster[0]?.podNumber ?? null);
+  const selectedStudent = roster.find(
+    (student) => student.podNumber === selectedPod,
+  );
+  const trackerUrl = getPodTrackerPageUrl(
+    selectedStudent?.assignment.pod_name,
+    env.TRAINING_TRACKER_BASE_URL,
+  );
+
   return (
     <AppShell roles={roles} title="Student Progress">
-      <AutoRefresh intervalMs={60_000} />
       <Card
         eyebrow={
           currentCohortNumber
             ? `Active cohort ${currentCohortNumber}`
             : "No active cohort"
         }
-        title="Cohort training tracker"
+        title="Live training tracker"
       >
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <p className="max-w-3xl text-sm leading-6 text-slate-300">
-            Review each assigned student&apos;s verified completion percentage,
-            current lab family, and module-level results. Tracker data refreshes
-            automatically every minute.
+            Select an assigned student to open that pod&apos;s existing training
+            tracker. Progress, module status, and verification details are shown
+            directly from the tracker system.
           </p>
           <p className="shrink-0 text-sm font-bold text-cyan-100">
-            {assignments?.length ?? 0} assigned students
+            {roster.length} assigned students
           </p>
         </div>
       </Card>
 
-      <Suspense
-        fallback={
-          <ProgressFallback assignmentCount={assignments?.length ?? 0} />
-        }
-      >
-        <CohortProgress
-          assignments={assignments ?? []}
-          profiles={profiles ?? []}
-        />
-      </Suspense>
-    </AppShell>
-  );
-}
-
-async function CohortProgress({
-  assignments,
-  profiles,
-}: {
-  assignments: Assignment[];
-  profiles: Profile[];
-}) {
-  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
-  const records: StudentProgressRecord[] = await Promise.all(
-    assignments.map(async (assignment) => ({
-      assignment,
-      profile: profileById.get(assignment.user_id) ?? null,
-      progress: await getPodProgress(assignment.pod_name),
-    })),
-  );
-  const summary = summarizeCohortProgress(
-    records.map((record) => record.progress),
-  );
-
-  return (
-    <>
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard
-          helper="Mean completion across pods currently reporting."
-          label="Average Progress"
-          value={
-            summary.averagePercentage === null
-              ? "Unavailable"
-              : `${summary.averagePercentage}%`
-          }
-        />
-        <MetricCard
-          helper="Students who completed every tracked lab family."
-          label="Completed"
-          value={summary.completed}
-        />
-        <MetricCard
-          helper="Students with verified work currently underway."
-          label="In Progress"
-          value={summary.inProgress}
-        />
-        <MetricCard
-          helper="Students whose tracker has not recorded lab activity."
-          label="Not Started"
-          value={summary.notStarted}
-        />
-        <MetricCard
-          helper="Pods that did not return a current tracker result."
-          label="Unavailable"
-          value={summary.unavailable}
-        />
-      </section>
-
-      <section aria-labelledby="student-progress-heading">
-        <div className="mb-4">
-          <p className="eyebrow">Student Detail</p>
-          <h2
-            className="mt-2 text-xl font-semibold"
-            id="student-progress-heading"
+      {selectedStudent && trackerUrl ? (
+        <section className="grid items-start gap-4 xl:grid-cols-[17rem_minmax(0,1fr)]">
+          <nav
+            aria-label="Assigned students"
+            className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:sticky xl:top-6 xl:grid-cols-1"
           >
-            Individual progress
-          </h2>
-        </div>
-        <div className="grid gap-3">
-          {records.map((record) => (
-            <StudentProgressDetails
-              key={record.assignment.user_id}
-              record={record}
+            {roster.map((student) => {
+              const selected = student.podNumber === selectedPod;
+
+              return (
+                <Link
+                  aria-current={selected ? "page" : undefined}
+                  className={`min-w-0 rounded-lg border px-3 py-3 transition ${
+                    selected
+                      ? "border-cyan-300/45 bg-cyan-300/10"
+                      : "border-white/10 bg-white/[0.03] hover:border-cyan-200/25 hover:bg-white/[0.06]"
+                  }`}
+                  href={`/admin/progress?pod=${student.podNumber}`}
+                  key={student.assignment.user_id}
+                  scroll={false}
+                >
+                  <span className="block text-xs font-bold uppercase text-cyan-100/60">
+                    Student {student.podNumber} · Pod{student.podNumber}
+                  </span>
+                  <span className="mt-1 block truncate text-sm font-bold text-slate-100">
+                    {student.profile?.full_name || "Assigned student"}
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-slate-400">
+                    {student.profile?.email || "Email unavailable"}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <section className="overflow-hidden rounded-lg border border-cyan-200/15 bg-slate-950/55">
+            <header className="flex flex-col justify-between gap-4 border-b border-cyan-200/10 px-5 py-4 sm:flex-row sm:items-center">
+              <div>
+                <p className="eyebrow">Pod{selectedPod} Tracker</p>
+                <h2 className="mt-2 text-xl font-semibold">
+                  {selectedStudent.profile?.full_name ||
+                    `Student ${selectedPod}`}
+                </h2>
+              </div>
+              <a
+                className="button secondary shrink-0"
+                href={trackerUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open tracker
+                <ExternalLink aria-hidden="true" size={16} />
+              </a>
+            </header>
+            <iframe
+              className="h-[calc(100vh-8rem)] min-h-[48rem] w-full bg-gray-950"
+              key={trackerUrl}
+              loading="eager"
+              referrerPolicy="strict-origin-when-cross-origin"
+              sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
+              src={trackerUrl}
+              title={`Training tracker for Student ${selectedPod}`}
             />
-          ))}
-          {records.length === 0 ? (
-            <Card>
-              <p className="text-sm text-slate-400">
-                No students are assigned to the active cohort.
-              </p>
-            </Card>
-          ) : null}
-        </div>
-      </section>
-    </>
-  );
-}
-
-function StudentProgressDetails({ record }: { record: StudentProgressRecord }) {
-  const { assignment, profile, progress } = record;
-  const studentNumber = String(assignment.seat_number ?? 0).padStart(2, "0");
-  const available = Boolean(progress && progress.status !== "unavailable");
-
-  return (
-    <details className="group overflow-hidden rounded-lg border border-cyan-200/15 bg-slate-950/55">
-      <summary className="grid min-h-28 cursor-pointer list-none items-center gap-4 px-5 py-4 hover:bg-white/5 xl:grid-cols-[8rem_minmax(0,1.25fr)_minmax(12rem,0.9fr)_9rem_1.5rem] [&::-webkit-details-marker]:hidden">
-        <div>
-          <p className="text-xs font-bold uppercase text-cyan-100/60">
-            Student {studentNumber}
-          </p>
-          <p className="mt-1 text-lg font-bold">
-            {assignment.pod_name ?? "Pod pending"}
-          </p>
-        </div>
-        <div className="min-w-0">
-          <p className="truncate font-bold text-slate-100">
-            {profile?.full_name || "Assigned student"}
-          </p>
-          <p className="mt-1 truncate text-sm text-slate-400">
-            {profile?.email || "Profile email unavailable"}
-          </p>
-        </div>
-        <div className="grid gap-2">
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-slate-400">
-              {available
-                ? `${progress?.completedModules} of ${progress?.totalModules} complete`
-                : "No current tracker result"}
-            </span>
-            <span className="font-bold">
-              {available ? `${progress?.overallPercentage}%` : "--"}
-            </span>
-          </div>
-          <ProgressBar
-            label={`Student ${studentNumber} overall progress`}
-            percentage={available ? (progress?.overallPercentage ?? 0) : 0}
-            status={
-              available ? (progress?.status ?? "not_started") : "unavailable"
-            }
-          />
-        </div>
-        <div className="flex flex-col items-start gap-2 xl:items-end">
-          {progress ? (
-            <StatusPill status={progress.status} />
-          ) : (
-            <span className="status-pill">Unavailable</span>
-          )}
-          <span className="text-xs text-slate-400">
-            {available ? formatDateTime(progress?.checkedAt) : "Check pending"}
-          </span>
-        </div>
-        <ChevronDown
-          aria-hidden="true"
-          className="text-slate-400 transition-transform group-open:rotate-180"
-          size={18}
-        />
-      </summary>
-      <div className="border-t border-cyan-200/10 bg-slate-950/30 p-5 sm:p-6">
-        {progress ? (
-          <TrainingProgressPanel progress={progress} />
-        ) : (
+          </section>
+        </section>
+      ) : (
+        <Card eyebrow="Student Detail" title="No assigned tracker">
           <p className="text-sm leading-6 text-slate-300">
-            This assignment does not have a valid pod link yet, so tracker
-            details are unavailable.
+            No student with a valid pod assignment is available in the active
+            cohort.
           </p>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function ProgressFallback({ assignmentCount }: { assignmentCount: number }) {
-  return (
-    <Card eyebrow="Tracker Sync" title="Loading student progress">
-      <div aria-busy="true" className="grid gap-3">
-        <div className="h-4 w-72 max-w-full animate-pulse rounded bg-white/10" />
-        <div className="h-2 w-full animate-pulse rounded-full bg-white/10" />
-        <p className="text-sm text-slate-400">
-          Checking {assignmentCount} assigned pods in parallel.
-        </p>
-      </div>
-    </Card>
+        </Card>
+      )}
+    </AppShell>
   );
 }
