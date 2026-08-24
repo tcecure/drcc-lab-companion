@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   parsePodProgress,
   podNumberFromPodName,
+  summarizeCohortProgress,
   unavailableProgress,
 } from "@/lib/training-progress";
 
@@ -89,5 +90,33 @@ describe("unavailableProgress", () => {
     expect(progress.trackerUrl).toBe(
       "https://training.status.tcecure.com/pod/01",
     );
+  });
+});
+
+describe("summarizeCohortProgress", () => {
+  it("summarizes reporting pods without treating outages as zero percent", () => {
+    const inProgress = parsePodProgress("01", payload);
+    const completed = parsePodProgress("02", {
+      ...payload,
+      podName: "Pod02",
+      studentNumber: "02",
+      overallPercentage: 100,
+      status: "completed",
+    });
+
+    expect(
+      summarizeCohortProgress([
+        inProgress,
+        completed,
+        unavailableProgress("03"),
+        null,
+      ]),
+    ).toEqual({
+      averagePercentage: 63,
+      completed: 1,
+      inProgress: 1,
+      notStarted: 0,
+      unavailable: 2,
+    });
   });
 });

@@ -53,6 +53,11 @@ const adminNav: NavItem[] = [
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
   { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals" },
   { href: "/admin/queue", icon: Users, label: "Student Queue" },
+  {
+    href: "/admin/progress",
+    icon: GraduationCap,
+    label: "Student Progress",
+  },
   { href: "/admin/import", icon: Import, label: "Import Students" },
   { href: "/admin/email-jobs", icon: Mail, label: "Email Jobs" },
   { href: "/admin/labs", icon: Gauge, label: "Lab Capacity" },

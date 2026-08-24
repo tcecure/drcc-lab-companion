@@ -78,6 +78,7 @@ export default async function AdminPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <Action href="/admin/import" label="Import students" />
             <Action href="/admin/queue" label="Student queue" />
+            <Action href="/admin/progress" label="Student progress" />
             <Action href="/admin/approvals" label="Approvals" />
             <Action href="/admin/email-jobs" label="Email jobs" />
           </div>
