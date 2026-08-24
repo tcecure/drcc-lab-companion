@@ -6,12 +6,16 @@
 -- read-only policies. No table here ever stores a credential: the gateway redacts
 -- before insert and there is a test asserting it.
 
-create type public.ai_run_status as enum (
-  'queued','running','paused','awaiting_approval','succeeded','failed',
-  'cancelled','timed_out','budget_exhausted','rate_limited','provider_error'
-);
+do $$ begin
+  create type public.ai_run_status as enum (
+    'queued','running','paused','awaiting_approval','succeeded','failed',
+    'cancelled','timed_out','budget_exhausted','rate_limited','provider_error'
+  );
+exception when duplicate_object then null; end $$;
 
-create type public.ai_approval_status as enum ('pending','approved','rejected','expired');
+do $$ begin
+  create type public.ai_approval_status as enum ('pending','approved','rejected','expired');
+exception when duplicate_object then null; end $$;
 
 -- One investigation, always tied to the support request that triggered it.
 create table if not exists public.ai_runs (
@@ -179,40 +183,58 @@ alter table public.ai_knowledge_proposals enable row level security;
 alter table public.ai_model_usage        enable row level security;
 alter table public.ai_integration_health enable row level security;
 
+drop policy if exists "staff read runs" on public.ai_runs;
 create policy "staff read runs" on public.ai_runs
   for select to authenticated using (public.labops_is_staff());
 
+drop policy if exists "staff read run events" on public.ai_run_events;
 create policy "staff read run events" on public.ai_run_events
   for select to authenticated using (
     public.labops_is_staff()
     and exists (select 1 from public.ai_runs r where r.id = run_id)
   );
 
+drop policy if exists "staff read messages" on public.ai_messages;
 create policy "staff read messages" on public.ai_messages
   for select to authenticated using (
     public.labops_is_staff()
     and exists (select 1 from public.ai_runs r where r.id = run_id)
   );
 
+drop policy if exists "staff read artifacts" on public.ai_artifacts;
 create policy "staff read artifacts" on public.ai_artifacts
   for select to authenticated using (
     public.labops_is_staff() and expires_at > now()
   );
 
+drop policy if exists "staff read tool actions" on public.ai_tool_actions;
 create policy "staff read tool actions" on public.ai_tool_actions
   for select to authenticated using (public.labops_is_staff());
 
+drop policy if exists "staff read approvals" on public.ai_approval_requests;
 create policy "staff read approvals" on public.ai_approval_requests
   for select to authenticated using (public.labops_is_staff());
 
+drop policy if exists "staff read knowledge proposals" on public.ai_knowledge_proposals;
 create policy "staff read knowledge proposals" on public.ai_knowledge_proposals
   for select to authenticated using (public.labops_is_staff());
 
+drop policy if exists "staff read model usage" on public.ai_model_usage;
 create policy "staff read model usage" on public.ai_model_usage
   for select to authenticated using (public.labops_is_staff());
 
+drop policy if exists "staff read integration health" on public.ai_integration_health;
 create policy "staff read integration health" on public.ai_integration_health
   for select to authenticated using (public.labops_is_staff());
+
+-- Supabase grants full DML on new public tables to anon/authenticated by default;
+-- RLS already has no write policy, but remove the grant as well so a write can never
+-- depend on a policy being present.
+revoke insert, update, delete on
+  public.ai_runs, public.ai_run_events, public.ai_messages, public.ai_artifacts,
+  public.ai_tool_actions, public.ai_approval_requests, public.ai_knowledge_proposals,
+  public.ai_model_usage, public.ai_integration_health
+  from authenticated, anon;
 
 -- Defence in depth: even the service role must not rewrite history.
 revoke update, delete on public.ai_run_events   from authenticated, anon, service_role;
