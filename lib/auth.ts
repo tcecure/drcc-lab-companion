@@ -2,7 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 
-import { canManage, type PortalRole } from "@/lib/roles";
+import { canManage, isAdmin, type PortalRole } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 
 export { canManage, managerRoles } from "@/lib/roles";
@@ -49,6 +49,17 @@ export async function requireManager() {
 
   if (!canManage(roles)) {
     redirect("/student");
+  }
+
+  return { user, roles };
+}
+
+export async function requireAdmin() {
+  const user = await requireUser();
+  const roles = await getUserRoles(user.id);
+
+  if (!isAdmin(roles)) {
+    redirect(canManage(roles) ? "/admin" : "/student");
   }
 
   return { user, roles };

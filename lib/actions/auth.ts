@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 function message(input: string) {
@@ -44,4 +45,31 @@ export async function logoutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+export async function setPasswordAction(formData: FormData) {
+  await requireUser();
+  const password = String(formData.get("password") ?? "");
+  const passwordConfirmation = String(
+    formData.get("passwordConfirmation") ?? "",
+  );
+
+  if (password.length < 12) {
+    redirect(
+      `/set-password?error=${message("Use a password with at least 12 characters.")}`,
+    );
+  }
+
+  if (password !== passwordConfirmation) {
+    redirect(`/set-password?error=${message("The passwords do not match.")}`);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    redirect(`/set-password?error=${message(friendlyAuthError(error))}`);
+  }
+
+  redirect("/dashboard");
 }

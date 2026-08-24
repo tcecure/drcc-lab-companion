@@ -21,9 +21,10 @@ import {
 import type { ReactNode } from "react";
 
 import { logoutAction } from "@/lib/actions/auth";
-import { canManage, type PortalRole } from "@/lib/roles";
+import { canManage, isAdmin, type PortalRole } from "@/lib/roles";
 
 type NavItem = {
+  adminOnly?: boolean;
   href: string;
   icon: LucideIcon;
   label: string;
@@ -42,6 +43,12 @@ const studentNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { href: "/admin", icon: ShieldCheck, label: "Admin Overview" },
+  {
+    adminOnly: true,
+    href: "/admin/users",
+    icon: Users,
+    label: "User Management",
+  },
   { href: "/admin/guides", icon: BookOpen, label: "Current Lab Guides" },
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
   { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals" },
@@ -62,7 +69,9 @@ export function AppShell({
   title: string;
 }) {
   const manager = canManage(roles);
-  const nav = manager ? adminNav : studentNav;
+  const nav = manager
+    ? adminNav.filter((item) => !item.adminOnly || isAdmin(roles))
+    : studentNav;
 
   return (
     <main className="app-shell">
