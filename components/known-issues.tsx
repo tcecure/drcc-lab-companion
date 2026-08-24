@@ -138,6 +138,13 @@ export function CurrentLabNotices() {
             <div className="border-t border-cyan-200/10 bg-slate-950/30 px-5 py-5 sm:pl-14 sm:pr-8">
               <NoticeDetail label="What you see" value={notice.symptom} />
               <NoticeDetail label="What to do" value={notice.guidance} />
+              {notice.steps?.length ? (
+                <ol className="mt-4 grid max-w-4xl list-decimal gap-2 pl-5 text-sm leading-6 text-slate-300 marker:font-bold marker:text-cyan-200">
+                  {notice.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              ) : null}
               {notice.commands?.length ? (
                 <div className="mt-4 grid gap-2">
                   {notice.commands.map((command) => (

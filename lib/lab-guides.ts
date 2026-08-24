@@ -38,7 +38,7 @@ export const labGuides = [
       "pfSense firewall rules, segmentation, logging, and network protection.",
     guidePath: "/guides/sc-lab-completion-guide.pdf",
     labCount: 12,
-    pageCount: 21,
+    pageCount: 25,
     workspace: "firewall",
   },
   {

@@ -4,6 +4,7 @@ export type CurrentLabNotice = {
   guidance: string;
   note?: string;
   reason?: string;
+  steps?: string[];
   symptom?: string;
   title: string;
 };
@@ -18,7 +19,7 @@ export type ExpectedLabBehavior = {
   title: string;
 };
 
-export const supportContentLastUpdated = "August 23, 2026";
+export const supportContentLastUpdated = "August 24, 2026";
 
 export const currentLabNotices: CurrentLabNotice[] = [
   {
@@ -88,14 +89,31 @@ export const currentLabNotices: CurrentLabNotice[] = [
   },
   {
     area: "SC firewall labs",
-    commands: ["http://10.51.XX.1", "Username: admin | Password: pfsense"],
+    commands: ["http://10.51.XX.1"],
     guidance:
-      "Connect to PODXX-DC in Guacamole, open Edge or Firefox on that desktop, and browse to the address below with your pod number in place of XX. For Pod 06, use http://10.51.6.1.",
+      "Connect to PODXX-DC in Guacamole, open Edge or Firefox on that desktop, and browse to the address below with your pod number in place of XX. For Pod 06, use http://10.51.6.1. Sign in with the firewall credentials issued by your instructor; they are included in your handout and are not published here.",
     reason:
       "The remote-desktop gateway carries desktops and terminals, not websites. The separate PODXX-GW tile was removed.",
     symptom:
       "The old PODXX-GW Guacamole tile times out or repeatedly reconnects.",
     title: "The pod firewall tile times out or loops",
+  },
+  {
+    area: "SC M2-L2 and SC M2-L3",
+    guidance:
+      "Create the VLAN before assigning the interface. The Add button becomes available on Interfaces > Assignments after at least one VLAN exists.",
+    reason:
+      "Each pod firewall has only two physical ports for WAN and LAN, so there is no spare interface to assign until a VLAN has been created. The updated SC guide now uses this sequence.",
+    steps: [
+      "For the DMZ, open Interfaces > VLANs > Add. Select parent interface vtnet1 (LAN), enter VLAN tag 50 and description DMZ, then save.",
+      "Open Interfaces > Assignments, select Add, and assign VLAN 50 on vtnet1. It appears as OPT1.",
+      "Open Interfaces > OPT1, enable the interface, set the description to DMZ, choose Static IPv4, enter 10.52.XX.1/24 using your pod number, then save and apply changes.",
+      "For M2-L3, create VLANs 10, 20, 30, and 40 the same way. Address them 10.61.XX.1/24, 10.62.XX.1/24, 10.63.XX.1/24, and 10.64.XX.1/24.",
+      "Do not use an address inside 10.51.XX.0/24 for a DMZ or VLAN; that subnet belongs to the LAN and pfSense will reject the overlap.",
+    ],
+    symptom:
+      "Interfaces > Assignments does not show an Add button when you begin the DMZ or VLAN segmentation lab.",
+    title: "The interface assignment Add button is missing",
   },
 ];
 

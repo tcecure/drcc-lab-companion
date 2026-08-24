@@ -19,12 +19,17 @@ describe("student support commands", () => {
   });
 
   it("publishes the complete student-facing issue set", () => {
-    expect(currentLabNotices).toHaveLength(7);
+    expect(currentLabNotices).toHaveLength(8);
     expect(resolvedLabIssues).toHaveLength(8);
     expect(expectedLabBehaviors).toHaveLength(4);
     expect(
       currentLabNotices.some((notice) =>
         notice.title.includes("password does not meet"),
+      ),
+    ).toBe(true);
+    expect(
+      currentLabNotices.some((notice) =>
+        notice.title.includes("interface assignment Add button"),
       ),
     ).toBe(true);
   });
@@ -39,5 +44,6 @@ describe("student support commands", () => {
     expect(publishedContent).not.toContain("crc-awx-labops");
     expect(publishedContent).not.toContain("mp_media_mount_waived");
     expect(publishedContent).not.toContain("RDS grace period");
+    expect(publishedContent).not.toContain("Password: pfsense");
   });
 });
