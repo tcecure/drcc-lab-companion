@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 
-import { canManage, getUserRoles, requireUser } from "@/lib/auth";
+import { getUserRoles, requireUser } from "@/lib/auth";
+import { getDefaultPortalPath } from "@/lib/roles";
 
 export default async function DashboardPage() {
-  await requireUser();
-  const roles = await getUserRoles();
+  const user = await requireUser();
+  const roles = await getUserRoles(user.id);
 
-  redirect(canManage(roles) ? "/admin" : "/student");
+  redirect(getDefaultPortalPath(roles));
 }

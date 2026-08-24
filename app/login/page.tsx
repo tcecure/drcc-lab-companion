@@ -10,7 +10,7 @@ import { loginAction } from "@/lib/actions/auth";
 import { getPublicOperationsSummary } from "@/lib/public-operations";
 
 type LoginPageProps = {
-  searchParams: Promise<{ error?: string; redirectTo?: string }>;
+  searchParams: Promise<{ error?: string }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -31,11 +31,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </p>
           ) : null}
           <form action={loginAction} className="mt-6 grid gap-4">
-            <input
-              name="redirectTo"
-              type="hidden"
-              value={params.redirectTo ?? "/dashboard"}
-            />
             <label className="grid gap-2 text-sm font-semibold">
               Email
               <input className="input" name="email" required type="email" />

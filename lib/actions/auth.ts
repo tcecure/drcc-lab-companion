@@ -2,7 +2,6 @@
 
 import { redirect } from "next/navigation";
 
-import { canManage, getUserRoles } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 function message(input: string) {
@@ -27,7 +26,6 @@ function friendlyAuthError(error: unknown) {
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const redirectTo = String(formData.get("redirectTo") ?? "/dashboard");
   const supabase = await createClient();
   const { error } = await supabase.auth
     .signInWithPassword({ email, password })
@@ -39,12 +37,7 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${message(friendlyAuthError(error))}`);
   }
 
-  if (redirectTo && redirectTo !== "/dashboard") {
-    redirect(redirectTo);
-  }
-
-  const roles = await getUserRoles();
-  redirect(canManage(roles) ? "/admin" : "/student");
+  redirect("/dashboard");
 }
 
 export async function logoutAction() {

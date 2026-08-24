@@ -2,14 +2,11 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 
+import { canManage, type PortalRole } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 
-export type PortalRole = "student" | "approver" | "admin";
-
-export const managerRoles = [
-  "admin",
-  "approver",
-] as const satisfies PortalRole[];
+export { canManage, managerRoles } from "@/lib/roles";
+export type { PortalRole } from "@/lib/roles";
 
 export async function getCurrentUser() {
   const supabase = await createClient();
@@ -46,16 +43,23 @@ export async function getUserRoles(userId?: string): Promise<PortalRole[]> {
     );
 }
 
-export function canManage(roles: readonly PortalRole[]) {
-  return managerRoles.some((role) => roles.includes(role));
-}
-
 export async function requireManager() {
   const user = await requireUser();
   const roles = await getUserRoles(user.id);
 
   if (!canManage(roles)) {
     redirect("/student");
+  }
+
+  return { user, roles };
+}
+
+export async function requireStudent() {
+  const user = await requireUser();
+  const roles = await getUserRoles(user.id);
+
+  if (canManage(roles)) {
+    redirect("/admin");
   }
 
   return { user, roles };

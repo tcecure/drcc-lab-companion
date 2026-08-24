@@ -20,8 +20,8 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { canManage, type PortalRole } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions/auth";
+import { canManage, type PortalRole } from "@/lib/roles";
 
 type NavItem = {
   href: string;
@@ -48,6 +48,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/import", icon: Import, label: "Import Students" },
   { href: "/admin/email-jobs", icon: Mail, label: "Email Jobs" },
   { href: "/admin/labs", icon: Gauge, label: "Lab Capacity" },
+  { href: "/support", icon: HelpCircle, label: "Support Guidance" },
 ];
 
 export function AppShell({
@@ -59,7 +60,8 @@ export function AppShell({
   roles: PortalRole[];
   title: string;
 }) {
-  const nav = canManage(roles) ? [...studentNav, ...adminNav] : studentNav;
+  const manager = canManage(roles);
+  const nav = manager ? adminNav : studentNav;
 
   return (
     <main className="app-shell">
@@ -92,7 +94,9 @@ export function AppShell({
       <section className="main-area">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Operations Workspace</p>
+            <p className="eyebrow">
+              {manager ? "Administration Workspace" : "Student Workspace"}
+            </p>
             <h1 className="mt-2 text-3xl font-bold">{title}</h1>
           </div>
           <div className="flex flex-wrap gap-2">

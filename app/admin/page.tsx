@@ -84,10 +84,9 @@ export default async function AdminPage() {
         </Card>
         <Card eyebrow="Lab Operations" title="Environment Controls">
           <div className="grid gap-3 sm:grid-cols-2">
+            <Action href="/admin/lab-status" label="Lab metrics" />
             <Action href="/admin/labs" label="Lab capacity" />
-            <Action href="/student/guides" label="Lab guides" />
-            <Action href="/student/labs" label="Student labs" />
-            <Action href="/student/support" label="Support" />
+            <Action href="/support" label="Support guidance" />
           </div>
         </Card>
       </section>
