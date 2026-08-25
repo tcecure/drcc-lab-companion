@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Activity,
   Bell,
+  Bot,
   BookOpen,
   ClipboardCheck,
   Gauge,
@@ -51,6 +52,7 @@ const adminNav: NavItem[] = [
   },
   { href: "/admin/guides", icon: BookOpen, label: "Current Lab Guides" },
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
+  { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
   { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals" },
   { href: "/admin/queue", icon: Users, label: "Student Queue" },
   {

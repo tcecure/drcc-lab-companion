@@ -15,4 +15,11 @@ describe("safe portal redirects", () => {
     expect(getSafeRedirectPath("//example.com/path")).toBe("/dashboard");
     expect(getSafeRedirectPath(null)).toBe("/dashboard");
   });
+
+  it("keeps the LabOps host on its own sign-in page", () => {
+    expect(getSafeRedirectPath("/labops", "/login")).toBe("/labops");
+    expect(getSafeRedirectPath("https://evil.test/labops", "/login")).toBe(
+      "/login",
+    );
+  });
 });

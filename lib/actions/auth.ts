@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
+import { getSafeRedirectPath } from "@/lib/redirects";
 import { createClient } from "@/lib/supabase/server";
 
 function message(input: string) {
@@ -24,6 +25,10 @@ function friendlyAuthError(error: unknown) {
   return "Authentication failed. Check your credentials and try again.";
 }
 
+function formPath(value: FormDataEntryValue | null, fallback: string) {
+  return getSafeRedirectPath(typeof value === "string" ? value : null, fallback);
+}
+
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
@@ -35,10 +40,12 @@ export async function loginAction(formData: FormData) {
     }));
 
   if (error) {
-    redirect(`/login?error=${message(friendlyAuthError(error))}`);
+    redirect(
+      `${formPath(formData.get("loginPath"), "/login")}?error=${message(friendlyAuthError(error))}`,
+    );
   }
 
-  redirect("/dashboard");
+  redirect(formPath(formData.get("next"), "/dashboard"));
 }
 
 export async function logoutAction() {
