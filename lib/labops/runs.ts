@@ -263,6 +263,26 @@ export async function cancelInvestigation(
   return { ok: true, run: summarizeRun(cancelled ?? run) };
 }
 
+function isErrorEvent(event: AgentActivityEvent) {
+  return /error/i.test(event.kind);
+}
+
+/**
+ * A failed conversation with nothing to say about why is worse than useless to the
+ * operator, so a failure always carries text: the agent's own (already redacted) error
+ * when there is one, and otherwise a statement of what is known.
+ */
+export function failureReasonFor(status: RunStatus, errorSummary: string | null) {
+  if (status !== "failed" && status !== "provider_error" && status !== "timed_out") {
+    return undefined;
+  }
+
+  return (
+    errorSummary ??
+    "The agent stopped without completing the investigation and reported no error. Check the provider configuration on the LabOps host."
+  );
+}
+
 export type RelayFrame =
   | { type: "event"; event: AgentActivityEvent }
   | { type: "status"; status: RunStatus; usage: UsageSnapshot }
@@ -298,6 +318,12 @@ export async function* relayInvestigation(
   let seq = await deps.store.nextEventSeq(run.id);
   let lastUsage: UsageSnapshot | null = null;
   let finalStatus: RunStatus = run.status;
+  /**
+   * A provider rejection (bad key, rate limit, model error) reaches us only as an agent
+   * error event; the conversation itself just turns `failed`. Without keeping it, the
+   * operator sees a bare failed run with no reason at all.
+   */
+  let lastErrorSummary: string | null = null;
 
   try {
     for await (const frame of deps.agent.streamActivity(run.agent_conversation_id, {
@@ -305,6 +331,10 @@ export async function* relayInvestigation(
       deadlineMs,
     })) {
       if (frame.type === "event") {
+        if (isErrorEvent(frame.event) && frame.event.summary) {
+          lastErrorSummary = frame.event.summary.slice(0, 500);
+        }
+
         await deps.store.appendEvents(run.id, [frame.event], seq);
         seq += 1;
         yield { type: "event", event: frame.event };
@@ -341,7 +371,9 @@ export async function* relayInvestigation(
       }
 
       if (status !== run.status) {
-        await deps.store.updateRunStatus(run.id, status);
+        await deps.store.updateRunStatus(run.id, status, {
+          failureReason: failureReasonFor(status, lastErrorSummary),
+        });
       }
 
       yield { type: "status", status, usage: snapshot.usage };

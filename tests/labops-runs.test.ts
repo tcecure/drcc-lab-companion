@@ -411,6 +411,56 @@ describe("relaying activity", () => {
     expect(state.statusUpdates.at(-1)?.status).toBe("succeeded");
   });
 
+  it("gives a failed run a reason drawn from the agent's error event", async () => {
+    // A provider rejection reaches the gateway only as an error event; without this the
+    // operator sees a bare 'failed'.
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const agent = stubAgent({
+      async *streamActivity() {
+        yield {
+          type: "event" as const,
+          event: {
+            ...event,
+            id: "evt-err",
+            kind: "ConversationErrorEvent",
+            summary: "AuthenticationError: Incorrect API key provided",
+          },
+        };
+        yield { type: "status" as const, snapshot: snapshot("failed", usage(0, 0, 0)) };
+      },
+    });
+
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    const last = state.statusUpdates.at(-1);
+
+    expect(last?.status).toBe("failed");
+    expect(last?.patch?.failureReason).toContain("Incorrect API key provided");
+  });
+
+  it("still explains a failure the agent reported nothing about", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const agent = stubAgent({
+      async *streamActivity() {
+        yield { type: "status" as const, snapshot: snapshot("failed", usage(0, 0, 0)) };
+      },
+    });
+
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    expect(state.statusUpdates.at(-1)?.patch?.failureReason).toMatch(/reported no error/);
+  });
+
   it("cancels and records budget_exhausted when the run overspends", async () => {
     state.run = runRow({
       status: "running",
