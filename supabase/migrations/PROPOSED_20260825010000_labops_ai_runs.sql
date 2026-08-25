@@ -236,6 +236,15 @@ revoke insert, update, delete on
   public.ai_model_usage, public.ai_integration_health
   from authenticated, anon;
 
+-- TRUNCATE is not covered by row-level security, so the default grant is dropped as
+-- well; audit history must not be removable by a client session. TRIGGER and
+-- REFERENCES are dropped for the same reason: neither is filtered by a policy.
+revoke truncate, trigger, references on
+  public.ai_runs, public.ai_run_events, public.ai_messages, public.ai_artifacts,
+  public.ai_tool_actions, public.ai_approval_requests, public.ai_knowledge_proposals,
+  public.ai_model_usage, public.ai_integration_health
+  from authenticated, anon;
+
 -- No policy grants anon anything, but the default select grant is removed too so an
 -- unauthenticated session cannot read a row even if a policy is later widened.
 revoke select on
