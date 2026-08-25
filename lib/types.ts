@@ -1439,6 +1439,253 @@ export type Database = {
           },
         ];
       };
+      ai_runs: {
+        Row: {
+          id: string;
+          support_request_id: string;
+          requested_by: string;
+          status:
+            | "queued"
+            | "running"
+            | "paused"
+            | "awaiting_approval"
+            | "succeeded"
+            | "failed"
+            | "cancelled"
+            | "timed_out"
+            | "budget_exhausted"
+            | "rate_limited"
+            | "provider_error";
+          title: string;
+          sanitized_context: Json;
+          agent_conversation_id: string | null;
+          model: string;
+          provider: string;
+          token_budget: number;
+          wallclock_limit_seconds: number;
+          failure_reason: string | null;
+          findings: string | null;
+          resolution: string | null;
+          started_at: string | null;
+          ended_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          support_request_id: string;
+          requested_by: string;
+          status?: Database["public"]["Tables"]["ai_runs"]["Row"]["status"];
+          title: string;
+          sanitized_context?: Json;
+          agent_conversation_id?: string | null;
+          model: string;
+          provider: string;
+          token_budget: number;
+          wallclock_limit_seconds: number;
+          failure_reason?: string | null;
+          findings?: string | null;
+          resolution?: string | null;
+          started_at?: string | null;
+          ended_at?: string | null;
+        };
+        Update: {
+          status?: Database["public"]["Tables"]["ai_runs"]["Row"]["status"];
+          agent_conversation_id?: string | null;
+          failure_reason?: string | null;
+          findings?: string | null;
+          resolution?: string | null;
+          started_at?: string | null;
+          ended_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ai_runs_support_request_id_fkey";
+            columns: ["support_request_id"];
+            isOneToOne: false;
+            referencedRelation: "support_requests";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ai_runs_requested_by_fkey";
+            columns: ["requested_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_run_events: {
+        Row: {
+          id: number;
+          run_id: string;
+          seq: number;
+          kind: string;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          run_id: string;
+          seq: number;
+          kind: string;
+          payload?: Json;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "ai_run_events_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "ai_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_messages: {
+        Row: {
+          id: number;
+          run_id: string;
+          role: "system" | "user" | "assistant" | "tool";
+          content: string;
+          created_at: string;
+        };
+        Insert: {
+          run_id: string;
+          role: Database["public"]["Tables"]["ai_messages"]["Row"]["role"];
+          content: string;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "ai_messages_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "ai_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_tool_actions: {
+        Row: {
+          id: number;
+          run_id: string;
+          tool: string;
+          target: string | null;
+          is_write: boolean;
+          outcome: "allowed" | "denied" | "failed" | "succeeded";
+          request: Json;
+          response_summary: string | null;
+          created_at: string;
+        };
+        Insert: {
+          run_id: string;
+          tool: string;
+          target?: string | null;
+          is_write?: boolean;
+          outcome: Database["public"]["Tables"]["ai_tool_actions"]["Row"]["outcome"];
+          request?: Json;
+          response_summary?: string | null;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "ai_tool_actions_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "ai_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_approval_requests: {
+        Row: {
+          id: string;
+          run_id: string;
+          requested_by: string;
+          action_kind: string;
+          action_payload: Json;
+          status: "pending" | "approved" | "rejected" | "expired";
+          decided_by: string | null;
+          decided_at: string | null;
+          decision_note: string | null;
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          run_id: string;
+          requested_by: string;
+          action_kind: string;
+          action_payload?: Json;
+          status?: Database["public"]["Tables"]["ai_approval_requests"]["Row"]["status"];
+          expires_at?: string;
+        };
+        Update: {
+          status?: Database["public"]["Tables"]["ai_approval_requests"]["Row"]["status"];
+          decided_by?: string | null;
+          decided_at?: string | null;
+          decision_note?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ai_approval_requests_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "ai_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_model_usage: {
+        Row: {
+          id: number;
+          run_id: string;
+          provider: string;
+          model: string;
+          prompt_tokens: number;
+          completion_tokens: number;
+          cost_usd: number;
+          created_at: string;
+        };
+        Insert: {
+          run_id: string;
+          provider: string;
+          model: string;
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          cost_usd?: number;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "ai_model_usage_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "ai_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_integration_health: {
+        Row: {
+          integration: string;
+          status: "ok" | "degraded" | "down" | "unconfigured";
+          detail: string | null;
+          checked_at: string;
+        };
+        Insert: {
+          integration: string;
+          status: Database["public"]["Tables"]["ai_integration_health"]["Row"]["status"];
+          detail?: string | null;
+          checked_at?: string;
+        };
+        Update: {
+          status?: Database["public"]["Tables"]["ai_integration_health"]["Row"]["status"];
+          detail?: string | null;
+          checked_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

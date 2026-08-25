@@ -36,6 +36,21 @@ describe("LabOps AI credential redaction", () => {
     expect(result.text).toContain("https://[REDACTED:url_credentials]@10.51.3.1/");
   });
 
+  it("redacts a credential written out in prose, as students report it", () => {
+    const result = redactText(
+      "My password is Winter2026! and the domain password was LabUser!2026#ac",
+    );
+
+    expect(result.text).not.toContain("Winter2026!");
+    expect(result.text).not.toContain("LabUser!2026#ac");
+  });
+
+  it("leaves prose about a password that carries no credential", () => {
+    const text = "My password is rejected when I create the user and the reset is incorrect.";
+
+    expect(redactText(text).text).toBe(text);
+  });
+
   it("removes private key blocks whole", () => {
     const result = redactText(
       "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\ndef\n-----END OPENSSH PRIVATE KEY-----",

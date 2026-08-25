@@ -76,6 +76,15 @@ const rules: Rule[] = [
     replace: `$1/${placeholder("credential_pair")}`,
   },
   {
+    // How students actually write it in a ticket: "my password is Winter2026!".
+    // The value must look like a credential (a digit or symbol, no spaces), so
+    // "password is rejected" or "password is incorrect" survives intact.
+    kind: "assigned_secret",
+    pattern:
+      /\b((?:pass(?:word|phrase|wd)?|pwd|api\s?key|secret)\s+(?:is|was|=)\s+)["']?((?=[^\s]*[0-9!@#$%^&*_+=])[^\s"',;]{6,})["']?/gi,
+    replace: `$1${placeholder("assigned_secret")}`,
+  },
+  {
     // password=..., "api_key": "...", secret: '...', PAT -> ...
     kind: "assigned_secret",
     pattern:
