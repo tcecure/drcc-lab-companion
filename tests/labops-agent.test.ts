@@ -85,6 +85,13 @@ describe("conversation request building", () => {
     ]);
   });
 
+  it("keeps tag keys inside the agent server's lowercase-alphanumeric contract", () => {
+    // Separators in a tag key are a 422 from the agent server, not a warning.
+    for (const key of Object.keys(body.tags ?? {})) {
+      expect(key).toMatch(/^[a-z0-9]+$/);
+    }
+  });
+
   it("does not start the agent loop from the initial message", () => {
     expect(body.initial_message).toEqual({
       role: "user",

@@ -153,7 +153,7 @@ export async function startInvestigation(
       workingDir: workspaceDirForRun(run.id),
       initialMessage: brief.prompt,
       title: run.title,
-      tags: { run_id: run.id, support_request_id: request.id },
+      tags: { runid: run.id, supportrequestid: request.id },
     });
 
     await deps.store.attachConversation(run.id, conversation.id);

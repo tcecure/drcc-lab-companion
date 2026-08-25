@@ -70,7 +70,10 @@ export type CreateConversationInput = {
   conversationId?: string;
   maxIterations?: number;
   title?: string;
-  /** Lowercase alphanumeric keys only, per the agent server contract. */
+  /**
+   * The agent server rejects any tag key outside /^[a-z0-9]+$/ with a 422, so keys carry
+   * no separators: `runid`, not `run_id`.
+   */
   tags?: Record<string, string>;
 };
 

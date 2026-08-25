@@ -238,6 +238,9 @@ describe("starting an investigation", () => {
       async createConversation(input) {
         prompts.push(input.initialMessage ?? "");
         expect(input.workingDir).toContain("run-1");
+        for (const key of Object.keys(input.tags ?? {})) {
+          expect(key).toMatch(/^[a-z0-9]+$/);
+        }
         return snapshot("running", usage(0, 0, 0));
       },
     });
