@@ -12,7 +12,7 @@ portal with an AWX tool server and an iframe of the stock OpenHands UI — and i
 identity in a local Postgres, exposes lab-mutating AWX calls behind one static secret,
 and its OpenHands half never ran (see the inventory).
 
-Phase 1 of LabOps AI is an internal, owner-only pilot at `labops.digitalrcc.com` that
+Phase 1 of LabOps AI is an internal, owner-only pilot at `labops.drcc.digitalrcc.com` that
 investigates tickets read-only and proposes changes for human approval. Only the owner
 (Eddie) may start investigations; all other staff are read-only and students are denied.
 
@@ -25,7 +25,7 @@ Four tiers, with OpenHands strictly internal:
 
 ```
 browser (staff)
-  → labops.digitalrcc.com         DigitalRCC-branded Next.js app, same repo/design system as my.digitalrcc.com,
+  → labops.drcc.digitalrcc.com         DigitalRCC-branded Next.js app, same repo/design system as my.digitalrcc.com,
                                    served from drcc-labops-01 behind the existing lab edge nginx (TLS there)
       → /api/labops/*             AI Gateway (BFF): validates Supabase JWT, authorises role, rate-limits,
                                    redacts, records audit_events, owns all model + infra credentials
@@ -140,7 +140,7 @@ deployment.
 
 | Question | Decision |
 |---|---|
-| Public hostname | `labops.digitalrcc.com`; staging validated first, production DNS only after approval (`checkpoint-dns-tls.md`) |
+| Public hostname | `labops.drcc.digitalrcc.com`; staging validated first, production DNS only after approval (`checkpoint-dns-tls.md`) |
 | Host naming | `drcc-<purpose>-<number>`; this VM is `drcc-labops-01` |
 | Model provider | OpenAI API. All Bedrock/IAM requirements removed. Model + key are server-side env on `drcc-labops-01` only (`checkpoint-openai-config.md`) |
 | Ticket intake | `support_requests` only; no mailbox in Phase 1 |

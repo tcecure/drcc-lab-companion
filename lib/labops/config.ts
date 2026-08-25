@@ -13,7 +13,7 @@ import type { LabOpsLimits } from "@/lib/labops/budgets";
  */
 const labopsSchema = z.object({
   LABOPS_OWNER_EMAIL: z.string().email(),
-  LABOPS_PUBLIC_URL: z.string().url().default("https://labops.digitalrcc.com"),
+  LABOPS_PUBLIC_URL: z.string().url().default("https://labops.drcc.digitalrcc.com"),
 
   // Model provider — deliberately generic so a provider swap is configuration only.
   LABOPS_LLM_PROVIDER: z.enum(["openai"]).default("openai"),

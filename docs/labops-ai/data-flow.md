@@ -3,7 +3,7 @@
 ```
  staff browser                Vercel                     drcc-labops-01 / pve2 (internal only)
  ────────────                 ──────                     ────────────────────────────────────
- labops.digitalrcc.com
+ labops.drcc.digitalrcc.com
    │ Supabase session cookie
    ▼
  Next.js app (branded)

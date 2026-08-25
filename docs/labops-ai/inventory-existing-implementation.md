@@ -64,7 +64,7 @@ proposed, and they arrive as reviewed migrations — see ADR 0001.
 
 ## 4. DNS / TLS facts
 
-- `labops.digitalrcc.com` — **does not resolve today**. `digitalrcc.com` NS = `dns{1,2}.registrar-servers.com` (Namecheap); `my.digitalrcc.com` is a Vercel CNAME.
+- `labops.drcc.digitalrcc.com` — **does not resolve today**. `digitalrcc.com` NS = `dns{1,2}.registrar-servers.com` (Namecheap); `my.digitalrcc.com` is a Vercel CNAME.
 - Three labels, so a single `CNAME` at Namecheap is enough and Vercel issues the certificate; no wildcard is involved. See `checkpoint-dns-tls.md`.
 - The lab's own names (`crc.ai.tcecure.com`, `training.status.tcecure.com`) live under `tcecure.com` in Route 53 and resolve to the lab edge IP, which is where a self-hosted host record would have to point.
 

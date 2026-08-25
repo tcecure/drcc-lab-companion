@@ -1,4 +1,4 @@
-# Approval checkpoint — Namecheap DNS + TLS for `labops.digitalrcc.com`
+# Approval checkpoint — Namecheap DNS + TLS for `labops.drcc.digitalrcc.com`
 
 **Nothing here has been applied.** This is the exact change set to run after approval;
 production DNS is not touched by Devin.
@@ -10,10 +10,13 @@ production DNS is not touched by Devin.
 | `digitalrcc.com` nameservers | `dns1.registrar-servers.com`, `dns2.registrar-servers.com` (Namecheap BasicDNS) |
 | `digitalrcc.com` A | `23.236.62.147` (marketing site — do not change) |
 | `my.digitalrcc.com` | `CNAME 3c0f0e9e14358c9a.vercel-dns-017.com.` (existing portal, Vercel) |
-| `labops.digitalrcc.com` | **NXDOMAIN** — free to create |
+| `drcc.digitalrcc.com` and below | **NXDOMAIN** — the whole `drcc` namespace is free |
 | Lab public edge | `108.31.169.90`, nginx 1.18.0 (Ubuntu) already terminating TLS for `crc.ai.tcecure.com` and `training.status.tcecure.com` |
 
-Three labels, so no wildcard is involved and one record is enough.
+Every DigitalRCC service sits under a shared `drcc` label — `labops.drcc`, `wiki.drcc`,
+`guac01.drcc` — so one `*.drcc.digitalrcc.com` certificate can cover them all later. Four
+labels means the existing `*.digitalrcc.com` wildcard does not apply, so this host gets its
+own certificate (Option A issues one per host anyway).
 
 ## Recommended: Option A — self-hosted behind the existing lab edge
 
@@ -26,7 +29,7 @@ use, so there is no new public entry point.
 
 | Type | Host | Value | TTL |
 |---|---|---|---|
-| `A Record` | `labops` | `108.31.169.90` | `5 min` during cutover, then Automatic |
+| `A Record` | `labops.drcc` | `108.31.169.90` | `5 min` during cutover, then Automatic |
 
 Do not create a URL-Redirect/parking record for this host — it breaks ACME validation.
 Do not touch the apex `A` or the existing `my` CNAME.
@@ -38,17 +41,17 @@ terminated here, proxied to the app on `drcc-labops-01`:
 ```nginx
 server {
     listen 80;
-    server_name labops.digitalrcc.com;
+    server_name labops.drcc.digitalrcc.com;
     location /.well-known/acme-challenge/ { root /var/www/html; }
     location / { return 301 https://$host$request_uri; }
 }
 
 server {
     listen 443 ssl http2;
-    server_name labops.digitalrcc.com;
+    server_name labops.drcc.digitalrcc.com;
 
-    ssl_certificate     /etc/letsencrypt/live/labops.digitalrcc.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/labops.digitalrcc.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/labops.drcc.digitalrcc.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/labops.drcc.digitalrcc.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Frame-Options DENY always;
@@ -72,7 +75,7 @@ server {
 **3. Certificate** (HTTP-01, same as the existing hosts):
 
 ```bash
-sudo certbot --nginx -d labops.digitalrcc.com --redirect
+sudo certbot --nginx -d labops.drcc.digitalrcc.com --redirect
 sudo certbot renew --dry-run       # confirm the renewal timer covers the new name
 ```
 
@@ -81,7 +84,7 @@ router. **No port forward is created for `drcc-labops-01` itself and none for `:
 
 ## Alternative: Option B — Vercel-hosted frontend
 
-Add `labops.digitalrcc.com` to the Vercel project and create the `CNAME` Vercel shows
+Add `labops.drcc.digitalrcc.com` to the Vercel project and create the `CNAME` Vercel shows
 (the portal uses the project-specific `…vercel-dns-017.com` form). Vercel issues and
 renews the certificate automatically.
 
@@ -100,15 +103,15 @@ stays on the internal network/VPN.
 ## Verification after the change
 
 ```bash
-dig +short labops.digitalrcc.com                       # 108.31.169.90
-curl -sSI http://labops.digitalrcc.com/                # 301 -> https
-curl -sSI https://labops.digitalrcc.com/               # 200/307, valid cert, HSTS
-curl -sS  https://labops.digitalrcc.com/api/labops/health   # JSON, no secrets
-openssl s_client -connect labops.digitalrcc.com:443 -servername labops.digitalrcc.com </dev/null 2>/dev/null | openssl x509 -noout -subject -dates
+dig +short labops.drcc.digitalrcc.com                       # 108.31.169.90
+curl -sSI http://labops.drcc.digitalrcc.com/                # 301 -> https
+curl -sSI https://labops.drcc.digitalrcc.com/               # 200/307, valid cert, HSTS
+curl -sS  https://labops.drcc.digitalrcc.com/api/labops/health   # JSON, no secrets
+openssl s_client -connect labops.drcc.digitalrcc.com:443 -servername labops.drcc.digitalrcc.com </dev/null 2>/dev/null | openssl x509 -noout -subject -dates
 # regressions — must be unchanged
 curl -sSI https://crc.ai.tcecure.com/ ; curl -sSI https://training.status.tcecure.com/ ; curl -sSI https://my.digitalrcc.com/
 # negatives — must fail
-curl -m 5 http://labops.digitalrcc.com:8000/ || echo "agent server correctly unreachable"
+curl -m 5 http://labops.drcc.digitalrcc.com:8000/ || echo "agent server correctly unreachable"
 curl -m 5 http://108.31.169.90:8000/          || echo "no agent port forward"
 ```
 

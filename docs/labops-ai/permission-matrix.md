@@ -13,7 +13,7 @@ removing it later is a config change, not a rewrite.
 
 | Capability | super_admin | lab_admin | developer | support_analyst | reviewer | student |
 |---|---|---|---|---|---|---|
-| Sign in to `labops.digitalrcc.com` | yes | yes | yes | yes | yes | **denied** |
+| Sign in to `labops.drcc.digitalrcc.com` | yes | yes | yes | yes | yes | **denied** |
 | View dashboard / health / model cost | yes | yes | yes | yes | yes | no |
 | Read assigned `support_requests` | all | all | linked to a run | assigned + unassigned | all | no |
 | Start an investigation | yes | yes | yes | yes | no | no |
