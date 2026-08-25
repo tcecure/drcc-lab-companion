@@ -204,6 +204,31 @@ describe("transport", () => {
     expect(headers.Authorization).toBeUndefined();
   });
 
+  it("treats an already-running conversation as a started one", async () => {
+    // Creating a conversation with an initial message starts it, so 409 is the happy path.
+    const { agent } = client([
+      { status: 409, body: { detail: "Conversation already running." } },
+    ]);
+
+    await expect(agent.run("c1")).resolves.toBeUndefined();
+  });
+
+  it("still surfaces other start failures", async () => {
+    const { agent } = client([{ status: 500, body: {} }]);
+
+    await expect(agent.run("c1")).rejects.toBeInstanceOf(AgentServerError);
+  });
+
+  it("keeps the agent's api shape out of failure messages the operator reads", async () => {
+    const { agent } = client([{ status: 500, body: {} }]);
+
+    await agent.run("c1").catch((error: AgentServerError) => {
+      expect(error.message).not.toContain("/api/conversations");
+      expect(error.message).not.toContain("c1");
+      expect(error.detail).toContain("/api/conversations");
+    });
+  });
+
   it("retries reads on transient failures and gives up with a typed error", async () => {
     const { agent, calls } = client([{ status: 503 }]);
 

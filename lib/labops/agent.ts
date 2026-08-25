@@ -34,16 +34,22 @@ export class AgentServerError extends Error {
   readonly code: AgentFailureCode;
   readonly httpStatus: number | null;
   readonly retryable: boolean;
+  /**
+   * The agent route that failed. Kept off `message` because failure reasons are persisted
+   * on the run and shown to the operator, and the agent's API shape is not theirs to see.
+   */
+  readonly detail: string | null;
 
   constructor(
     code: AgentFailureCode,
     message: string,
-    options: { httpStatus?: number | null } = {},
+    options: { httpStatus?: number | null; detail?: string | null } = {},
   ) {
     super(message);
     this.name = "AgentServerError";
     this.code = code;
     this.httpStatus = options.httpStatus ?? null;
+    this.detail = options.detail ?? null;
     this.retryable = isRetryableFailure(code);
   }
 }
@@ -199,11 +205,10 @@ export class AgentClient {
     if (!response.ok) {
       const code = classifyHttpStatus(response.status);
 
-      throw new AgentServerError(
-        code,
-        `Agent server returned ${response.status} for ${path}`,
-        { httpStatus: response.status },
-      );
+      throw new AgentServerError(code, `Agent server returned ${response.status}`, {
+        httpStatus: response.status,
+        detail: path,
+      });
     }
 
     if (response.status === 204) {
@@ -215,8 +220,8 @@ export class AgentClient {
     } catch {
       throw new AgentServerError(
         "provider_error",
-        `Agent server returned an unreadable response for ${path}`,
-        { httpStatus: response.status },
+        "Agent server returned an unreadable response",
+        { httpStatus: response.status, detail: path },
       );
     }
   }
@@ -296,8 +301,21 @@ export class AgentClient {
     });
   }
 
+  /**
+   * Idempotent: creating a conversation with an initial message already starts it, so the
+   * agent server answers 409 ("Conversation already running") to this call on the happy
+   * path. Only a different failure is a real one.
+   */
   async run(conversationId: string): Promise<void> {
-    await this.request<unknown>(agentRoutes.run(conversationId), { method: "POST" });
+    try {
+      await this.request<unknown>(agentRoutes.run(conversationId), { method: "POST" });
+    } catch (error) {
+      if (error instanceof AgentServerError && error.httpStatus === 409) {
+        return;
+      }
+
+      throw error;
+    }
   }
 
   async pause(conversationId: string): Promise<void> {
