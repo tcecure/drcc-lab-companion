@@ -34,7 +34,7 @@ export async function getLabOpsIdentity(): Promise<LabOpsIdentity | null> {
     .eq("user_id", user.id);
 
   const roles = (data ?? [])
-    .map((row) => row.roles?.role_name)
+    .map((row) => row.roles?.role_name as string | undefined)
     .filter((role): role is LabOpsRole =>
       knownRoles.includes(role as LabOpsRole),
     );
