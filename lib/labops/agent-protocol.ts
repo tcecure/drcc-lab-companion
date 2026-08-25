@@ -119,10 +119,13 @@ export function buildCreateConversationBody(input: CreateConversationInput) {
         ...(llm.requestTimeoutSeconds ? { timeout: llm.requestTimeoutSeconds } : {}),
         ...(llm.maxRetries === undefined ? {} : { num_retries: llm.maxRetries }),
       },
+      // Registry names, not class names: 'TerminalTool' resolves to nothing and the agent
+      // server fails initialization with KeyError once the first message is sent. The
+      // browser tool set is deliberately absent — the workspace has no browser.
       tools: [
-        { name: "TerminalTool", params: {} },
-        { name: "FileEditorTool", params: {} },
-        { name: "TaskTrackerTool", params: {} },
+        { name: "terminal", params: {} },
+        { name: "file_editor", params: {} },
+        { name: "task_tracker", params: {} },
       ],
     },
   };

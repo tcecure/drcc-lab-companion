@@ -79,9 +79,9 @@ describe("conversation request building", () => {
   it("hands no secrets and no network tool to the workspace", () => {
     expect(body.secrets).toEqual({});
     expect(body.agent.tools.map((tool) => tool.name)).toEqual([
-      "TerminalTool",
-      "FileEditorTool",
-      "TaskTrackerTool",
+      "terminal",
+      "file_editor",
+      "task_tracker",
     ]);
   });
 
