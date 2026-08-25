@@ -8,8 +8,13 @@ import { labopsStore, summarizeRun } from "@/lib/labops/store";
 
 export const dynamic = "force-dynamic";
 
+// Any UUID shape a ticket id can actually take: zod's .uuid() enforces the RFC 4122
+// variant nibble, which rejects hand-seeded ids that Postgres stores happily.
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const startSchema = z.object({
-  supportRequestId: z.string().uuid(),
+  supportRequestId: z.string().regex(uuidPattern),
 });
 
 const statusForCode: Record<StartFailureCode, number> = {
@@ -54,7 +59,11 @@ export async function POST(request: NextRequest) {
   const parsed = startSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
-    return jsonError(400, "A supportRequestId is required.", { code: "invalid_request" });
+    return jsonError(
+      400,
+      "supportRequestId must be the UUID of a support request.",
+      { code: "invalid_request" },
+    );
   }
 
   try {
