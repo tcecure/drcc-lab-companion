@@ -40,6 +40,8 @@ export const agentRoutes = {
   health: "/health",
   ready: "/ready",
   createConversation: "/api/conversations",
+  // Cheapest authenticated read: liveness alone cannot tell a good key from a bad one.
+  conversationCount: "/api/conversations/count",
   conversation: (id: string) => `/api/conversations/${encodeURIComponent(id)}`,
   sendMessage: (id: string) =>
     `/api/conversations/${encodeURIComponent(id)}/events`,

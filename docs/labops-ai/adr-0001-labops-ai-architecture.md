@@ -61,7 +61,7 @@ Neither repo stores secrets: env templates, secret names and placeholders only.
 
 Agent-server facts the gateway depends on (SDK 1.42.1):
 
-- Listens on `:8000`; `SESSION_API_KEY` turns on `Authorization: Bearer` on every request — the gateway is the only holder.
+- Listens on `:8000`; `SESSION_API_KEY` is presented in the `X-Session-API-Key` header on every request (its OpenAPI bearer scheme is a different credential and rejects this key) — the gateway is the only holder.
 - `OH_SECRET_KEY` encrypts stored conversation secrets; required for restart persistence.
 - REST: `POST /conversations`, `GET /conversations/{id}`, `POST /conversations/{id}/{pause,interrupt,run}`, `POST /conversations/{id}/goal{,/stop,/resume}`, `GET|POST /conversations/{id}/events`, `DELETE /conversations/{id}` — which is exactly the start/pause/cancel/resume surface the UI needs.
 - Events stream over `WebSocket /conversations/{id}/events/socket`; the server can also push to a gateway **webhook**, which is how run events get persisted durably.

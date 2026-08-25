@@ -2,19 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { runDeps } from "@/lib/labops/gateway";
-import { failureResponse, guard, jsonError } from "@/lib/labops/http";
+import { failureResponse, guard, isUuid, jsonError } from "@/lib/labops/http";
 import { startInvestigation, type StartFailureCode } from "@/lib/labops/runs";
 import { labopsStore, summarizeRun } from "@/lib/labops/store";
 
 export const dynamic = "force-dynamic";
 
-// Any UUID shape a ticket id can actually take: zod's .uuid() enforces the RFC 4122
-// variant nibble, which rejects hand-seeded ids that Postgres stores happily.
-const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const startSchema = z.object({
-  supportRequestId: z.string().regex(uuidPattern),
+  supportRequestId: z.string().refine(isUuid),
 });
 
 const statusForCode: Record<StartFailureCode, number> = {

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { runDeps } from "@/lib/labops/gateway";
-import { failureResponse, guard, jsonError } from "@/lib/labops/http";
+import { failureResponse, guard, isUuid, jsonError } from "@/lib/labops/http";
 import { recordResolution } from "@/lib/labops/runs";
 import { labopsStore, summarizeRun } from "@/lib/labops/store";
 
@@ -28,6 +28,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
+
+  if (!isUuid(id)) {
+    return jsonError(404, "That investigation does not exist.", { code: "not_found" });
+  }
 
   try {
     const store = labopsStore();
@@ -98,6 +102,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const { id } = await params;
+
+  if (!isUuid(id)) {
+    return jsonError(404, "That investigation does not exist.", { code: "not_found" });
+  }
+
   const parsed = resolutionSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {

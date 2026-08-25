@@ -12,6 +12,7 @@ import {
 import { requireManager } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { authorizeLabOpsRequest } from "@/lib/labops/authz";
+import { isUuid } from "@/lib/labops/http";
 import { isActiveStatus, labopsStore } from "@/lib/labops/store";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,11 @@ export default async function InvestigationPage({
   }
 
   const { id } = await params;
+
+  if (!isUuid(id)) {
+    notFound();
+  }
+
   const store = labopsStore();
   const run = await store.getRun(id);
 

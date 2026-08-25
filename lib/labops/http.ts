@@ -18,6 +18,18 @@ export function jsonError(status: number, error: string, extra: Record<string, u
   return NextResponse.json({ error, ...extra }, { status });
 }
 
+// Any UUID shape Postgres stores happily: zod's .uuid() enforces the RFC 4122 variant
+// nibble, which rejects hand-seeded ids.
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Path ids reach the database as `uuid`, where a malformed value raises a cast error and
+ * would surface as a 500. Callers reject the shape first and report "not found" instead.
+ */
+export function isUuid(value: string) {
+  return uuidPattern.test(value);
+}
+
 /**
  * Every LabOps route starts here: session, staff role, and the pilot-operator gate for
  * anything that spends money. A missing server configuration is reported as 503 rather

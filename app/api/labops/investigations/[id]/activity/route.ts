@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { runDeps } from "@/lib/labops/gateway";
-import { guard } from "@/lib/labops/http";
+import { guard, jsonError, isUuid } from "@/lib/labops/http";
 import { relayInvestigation } from "@/lib/labops/runs";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +26,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   const { id } = await params;
+
+  if (!isUuid(id)) {
+    return jsonError(404, "That investigation does not exist.", { code: "not_found" });
+  }
   const deps = runDeps();
   const encoder = new TextEncoder();
   const controller = new AbortController();

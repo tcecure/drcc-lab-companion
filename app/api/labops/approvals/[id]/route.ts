@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
-import { failureResponse, guard, jsonError } from "@/lib/labops/http";
+import { failureResponse, guard, isUuid, jsonError } from "@/lib/labops/http";
 import { canDecideSpecificApproval } from "@/lib/labops/policy";
 import { labopsStore } from "@/lib/labops/store";
 
@@ -24,6 +24,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const { id } = await params;
+
+  if (!isUuid(id)) {
+    return jsonError(404, "That approval request does not exist.", { code: "not_found" });
+  }
+
   const parsed = decisionSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {

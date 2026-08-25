@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { runDeps } from "@/lib/labops/gateway";
-import { failureResponse, guard, jsonError } from "@/lib/labops/http";
+import { failureResponse, guard, isUuid, jsonError } from "@/lib/labops/http";
 import { cancelInvestigation, type CancelFailureCode } from "@/lib/labops/runs";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,10 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   }
 
   const { id } = await params;
+
+  if (!isUuid(id)) {
+    return jsonError(404, "That investigation does not exist.", { code: "not_found" });
+  }
 
   try {
     const result = await cancelInvestigation(runDeps(), {

@@ -187,13 +187,14 @@ describe("transport", () => {
     expect(() => new AgentClient({ baseUrl: "", apiKey: "" })).toThrow();
   });
 
-  it("authenticates with the private bearer key", async () => {
+  it("authenticates with the agent server's session key header", async () => {
     const { agent, calls } = client([{ body: { ok: true } }]);
 
     await agent.health();
 
     const headers = calls[0].init.headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer agent-key");
+    expect(headers["X-Session-API-Key"]).toBe("agent-key");
+    expect(headers.Authorization).toBeUndefined();
   });
 
   it("retries reads on transient failures and gives up with a typed error", async () => {

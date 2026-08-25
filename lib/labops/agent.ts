@@ -165,7 +165,9 @@ export class AgentClient {
       response = await this.fetchImpl(this.url(path, options.query), {
         method: options.method ?? "GET",
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          // The agent server authenticates SESSION_API_KEY through its APIKeyHeader
+          // scheme; its bearer scheme is for a different credential and rejects this key.
+          "X-Session-API-Key": this.apiKey,
           Accept: "application/json",
           ...(options.body === undefined
             ? {}
@@ -219,10 +221,18 @@ export class AgentClient {
     }
   }
 
-  /** Liveness only. Never exposes the agent URL to callers. */
+  /**
+   * Liveness *and* credentials: the unauthenticated /health endpoint answers even when the
+   * gateway's key is wrong, which would report a healthy agent right up to the first start.
+   * Never exposes the agent URL to callers.
+   */
   async health(): Promise<{ ok: boolean }> {
     try {
       await this.request<unknown>(agentRoutes.health, {
+        retryable: true,
+        timeoutMs: 5_000,
+      });
+      await this.request<unknown>(agentRoutes.conversationCount, {
         retryable: true,
         timeoutMs: 5_000,
       });
