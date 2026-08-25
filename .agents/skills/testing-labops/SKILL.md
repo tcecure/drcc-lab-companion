@@ -104,3 +104,14 @@ rendering results into the DOM is what makes them both readable and recordable.
 - `SUPABASE_ACCESS_TOKEN` — Supabase Management API token used to read staging API keys and run
   staging SQL. No OpenAI or agent-server credential is needed for these tests; the agent-down path
   is itself the thing under test.
+
+## Production host notes
+
+- The served client bundle carries **no** Supabase project ref, so "which project is this
+  build against?" cannot be answered over HTTP. Grep the release on the VM instead:
+  `ssh labops "grep -rl <ref> /opt/labops/app/current/.next | wc -l"` — the expected ref must
+  match and the other must be zero.
+- The anonymous surface cannot exercise the authenticated `isUuid()` 404 paths: the auth gate
+  runs before the id guard, so every bad id returns 401. Bad-id coverage needs a session.
+- `/` returns `302 /labops` at the edge; `/labops` is the branded login page and
+  `/admin/labops` 307s there when unauthenticated.
