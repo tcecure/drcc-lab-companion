@@ -6,6 +6,17 @@
 -- Existing roles (student, approver, admin) are left in place; existing admins keep
 -- full access by also receiving super_admin, so no staff account loses anything.
 
+-- public.roles carries a check constraint that allow-lists role_name. It has to widen
+-- before the new roles can be inserted; the constraint is rebuilt (not dropped) so an
+-- arbitrary role name still cannot be created.
+alter table public.roles drop constraint if exists roles_role_name_check;
+alter table public.roles add constraint roles_role_name_check check (
+  role_name = any (array[
+    'student','approver','admin',
+    'super_admin','lab_admin','developer','support_analyst'
+  ])
+);
+
 insert into public.roles (role_name, description)
 values
   ('super_admin',     'LabOps AI: full control — model config, tool allow-lists, limits, all approvals.'),

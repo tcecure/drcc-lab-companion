@@ -69,6 +69,26 @@ update public.ai_run_events set kind = 'x';   -- expect: permission denied
 These run as integration tests against a staging project, and the student-denial cases are
 part of the acceptance criteria.
 
+### Staging result
+
+Both migrations are applied to the `DRCC-staging` project (structure-only copy of the five
+portal tables, no production rows), and all ten behavioural checks pass there:
+
+```bash
+SUPABASE_ACCESS_TOKEN=... supabase/tests/labops/run_staging.sh <staging-ref>
+# STAGING CHECKS PASSED
+```
+
+The script is re-runnable: it seeds fixtures idempotently, replays both migrations, asserts
+the table privileges (`authenticated` may select but not write, `anon` may not read, even
+`service_role` cannot update the audit tables) and removes its own rows afterwards. It also
+must never be pointed at production - migrations reach production only after approval.
+
+Two defects the remote run surfaced that the local harness could not: the production
+`roles_role_name_check` constraint rejected the four new role names (the migration now
+rebuilds the allow-list first), and `anon` retained Supabase's default `select` grant on the
+new tables (now revoked).
+
 ## Rollback
 
 ```sql

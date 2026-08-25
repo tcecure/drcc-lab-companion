@@ -40,7 +40,11 @@ create table if not exists public.profiles (
 create table if not exists public.roles (
   id uuid primary key default gen_random_uuid(),
   role_name text not null unique,
-  description text
+  description text,
+  -- Mirrors the live DRCC project: role_name is allow-listed, so a migration that adds
+  -- a role has to widen this constraint first.
+  constraint roles_role_name_check
+    check (role_name = any (array['student', 'approver', 'admin']))
 );
 
 create table if not exists public.user_roles (
