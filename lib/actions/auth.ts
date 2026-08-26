@@ -9,6 +9,10 @@ import { getSafeRedirectPath } from "@/lib/redirects";
 import { createClient } from "@/lib/supabase/server";
 
 const emailSchema = z.string().trim().email();
+const passwordRecoverySchema = z.object({
+  tokenHash: z.string().trim().min(1),
+  type: z.literal("recovery"),
+});
 
 function message(input: string) {
   return encodeURIComponent(input);
@@ -85,6 +89,33 @@ export async function requestPasswordResetAction(formData: FormData) {
   redirect(
     `/forgot-password?message=${message("If an account exists for that email, a password reset link has been sent.")}`,
   );
+}
+
+export async function confirmPasswordRecoveryAction(formData: FormData) {
+  const recovery = passwordRecoverySchema.safeParse({
+    tokenHash: formData.get("tokenHash"),
+    type: formData.get("type"),
+  });
+
+  if (!recovery.success) {
+    redirect(
+      `/login?error=${message("This password reset link is incomplete. Request a new link.")}`,
+    );
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({
+    token_hash: recovery.data.tokenHash,
+    type: recovery.data.type,
+  });
+
+  if (error) {
+    redirect(
+      `/login?error=${message("This password reset link is invalid or has expired. Request a new link.")}`,
+    );
+  }
+
+  redirect("/set-password");
 }
 
 export async function setPasswordAction(formData: FormData) {
