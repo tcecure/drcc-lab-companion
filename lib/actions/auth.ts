@@ -13,6 +13,10 @@ const passwordRecoverySchema = z.object({
   tokenHash: z.string().trim().min(1),
   type: z.literal("recovery"),
 });
+const invitationSchema = z.object({
+  tokenHash: z.string().trim().min(1),
+  type: z.literal("invite"),
+});
 
 function message(input: string) {
   return encodeURIComponent(input);
@@ -112,6 +116,33 @@ export async function confirmPasswordRecoveryAction(formData: FormData) {
   if (error) {
     redirect(
       `/login?error=${message("This password reset link is invalid or has expired. Request a new link.")}`,
+    );
+  }
+
+  redirect("/set-password");
+}
+
+export async function confirmInvitationAction(formData: FormData) {
+  const invitation = invitationSchema.safeParse({
+    tokenHash: formData.get("tokenHash"),
+    type: formData.get("type"),
+  });
+
+  if (!invitation.success) {
+    redirect(
+      `/login?error=${message("This invitation link is incomplete. Ask the DigitalRCC team for a new invitation.")}`,
+    );
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({
+    token_hash: invitation.data.tokenHash,
+    type: invitation.data.type,
+  });
+
+  if (error) {
+    redirect(
+      `/login?error=${message("This invitation is invalid or has expired. Ask the DigitalRCC team for a new invitation.")}`,
     );
   }
 
