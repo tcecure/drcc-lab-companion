@@ -1,10 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { z } from "zod";
 
 import { requireUser } from "@/lib/auth";
+import { readPublicEnv } from "@/lib/env";
 import { getSafeRedirectPath } from "@/lib/redirects";
 import { createClient } from "@/lib/supabase/server";
+
+const emailSchema = z.string().trim().email();
 
 function message(input: string) {
   return encodeURIComponent(input);
@@ -52,6 +56,35 @@ export async function logoutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+export async function requestPasswordResetAction(formData: FormData) {
+  const email = emailSchema.safeParse(formData.get("email"));
+
+  if (!email.success) {
+    redirect(
+      `/forgot-password?error=${message("Enter a valid email address.")}`,
+    );
+  }
+
+  const env = readPublicEnv();
+  const callbackUrl = new URL("/auth/callback", env.NEXT_PUBLIC_APP_URL);
+  callbackUrl.searchParams.set("next", "/set-password");
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth
+    .resetPasswordForEmail(email.data, {
+      redirectTo: callbackUrl.toString(),
+    })
+    .catch((error) => ({ error }));
+
+  if (error) {
+    redirect(`/forgot-password?error=${message(friendlyAuthError(error))}`);
+  }
+
+  redirect(
+    `/forgot-password?message=${message("If an account exists for that email, a password reset link has been sent.")}`,
+  );
 }
 
 export async function setPasswordAction(formData: FormData) {

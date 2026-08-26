@@ -33,17 +33,30 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <form action={loginAction} className="mt-6 grid gap-4">
             <label className="grid gap-2 text-sm font-semibold">
               Email
-              <input className="input" name="email" required type="email" />
+              <input
+                autoComplete="email"
+                className="input"
+                name="email"
+                required
+                type="email"
+              />
             </label>
             <label className="grid gap-2 text-sm font-semibold">
               Password
               <input
+                autoComplete="current-password"
                 className="input"
                 name="password"
                 required
                 type="password"
               />
             </label>
+            <Link
+              className="w-fit text-sm font-bold text-cyan-200 hover:text-cyan-100"
+              href="/forgot-password"
+            >
+              Forgot password?
+            </Link>
             <SubmitButton>Log in</SubmitButton>
           </form>
           <Link

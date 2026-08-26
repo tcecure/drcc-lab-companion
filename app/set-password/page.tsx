@@ -15,7 +15,7 @@ export default async function SetPasswordPage({
   return (
     <main className="grid min-h-screen place-items-center px-4 py-12">
       <section className="card w-full max-w-md">
-        <p className="eyebrow">DigitalRCC Staff Access</p>
+        <p className="eyebrow">DigitalRCC Account Access</p>
         <h1 className="mt-2 text-3xl font-bold">Set your password</h1>
         <p className="mt-3 text-sm leading-6 text-slate-300">
           Create the password you will use to return to the Lab Companion.
