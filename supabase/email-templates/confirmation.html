@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Confirm your DigitalRCC email address</title>
+    <style>
+      @media only screen and (max-width: 620px) {
+        .email-shell {
+          width: 100% !important;
+        }
+        .email-pad {
+          padding-left: 24px !important;
+          padding-right: 24px !important;
+        }
+      }
+    </style>
+  </head>
+  <body
+    style="margin: 0; padding: 0; background: #050b16; color: #e8f4ff; font-family: Arial, Helvetica, sans-serif;"
+  >
+    <div
+      style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;"
+    >
+      Confirm your email address to finish activating your DigitalRCC account.
+    </div>
+    <table
+      role="presentation"
+      width="100%"
+      cellspacing="0"
+      cellpadding="0"
+      border="0"
+      style="background: #050b16;"
+    >
+      <tr>
+        <td align="center" style="padding: 36px 16px;">
+          <table
+            class="email-shell"
+            role="presentation"
+            width="600"
+            cellspacing="0"
+            cellpadding="0"
+            border="0"
+            style="width: 600px; max-width: 600px; background: #0d1b2f; border: 1px solid #1d4761; border-radius: 8px; overflow: hidden;"
+          >
+            <tr>
+              <td
+                class="email-pad"
+                style="padding: 28px 36px; border-bottom: 1px solid #1d4761;"
+              >
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellspacing="0"
+                  cellpadding="0"
+                  border="0"
+                >
+                  <tr>
+                    <td width="56" valign="middle">
+                      <table
+                        role="presentation"
+                        width="44"
+                        height="44"
+                        cellspacing="0"
+                        cellpadding="0"
+                        border="0"
+                        style="width: 44px; height: 44px; background: #36d5f5; border-radius: 8px;"
+                      >
+                        <tr>
+                          <td
+                            align="center"
+                            valign="middle"
+                            style="color: #03111e; font-size: 15px; font-weight: 800;"
+                          >
+                            DR
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td valign="middle">
+                      <div
+                        style="font-size: 18px; line-height: 24px; font-weight: 800; color: #f4f9ff;"
+                      >
+                        DigitalRCC
+                      </div>
+                      <div
+                        style="font-size: 12px; line-height: 18px; color: #8facbf;"
+                      >
+                        Lab Companion
+                      </div>
+                    </td>
+                    <td align="right" valign="middle">
+                      <span
+                        style="display: inline-block; padding: 6px 10px; border: 1px solid #25617a; border-radius: 999px; color: #a9ecf8; font-size: 11px; font-weight: 700;"
+                      >
+                        VERIFY EMAIL
+                      </span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad" style="padding: 40px 36px 20px;">
+                <div
+                  style="margin-bottom: 12px; color: #74dff4; font-size: 11px; line-height: 16px; font-weight: 800; text-transform: uppercase;"
+                >
+                  One last step
+                </div>
+                <h1
+                  style="margin: 0; color: #f4f9ff; font-size: 30px; line-height: 38px; font-weight: 800;"
+                >
+                  Confirm your email address
+                </h1>
+                {{ if .Data.full_name }}
+                <p
+                  style="margin: 18px 0 0; color: #b8cada; font-size: 16px; line-height: 26px;"
+                >
+                  Hi {{ .Data.full_name }}, confirm this email address to finish
+                  activating your DigitalRCC account.
+                </p>
+                {{ else }}
+                <p
+                  style="margin: 18px 0 0; color: #b8cada; font-size: 16px; line-height: 26px;"
+                >
+                  Confirm this email address to finish activating your
+                  DigitalRCC account.
+                </p>
+                {{ end }}
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad" style="padding: 12px 36px 8px;">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellspacing="0"
+                  cellpadding="0"
+                  border="0"
+                  style="background: #091526; border: 1px solid #18384e; border-radius: 6px;"
+                >
+                  <tr>
+                    <td style="padding: 18px 20px;">
+                      <p
+                        style="margin: 0; color: #dceaf5; font-size: 14px; line-height: 22px;"
+                      >
+                        This confirmation connects {{ .Email }} to the
+                        DigitalRCC Lab Companion and protects your account from
+                        unauthorized activation.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad" style="padding: 24px 36px 18px;">
+                <table
+                  role="presentation"
+                  cellspacing="0"
+                  cellpadding="0"
+                  border="0"
+                >
+                  <tr>
+                    <td
+                      align="center"
+                      bgcolor="#36d5f5"
+                      style="border-radius: 6px;"
+                    >
+                      <a
+                        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email"
+                        style="display: inline-block; padding: 14px 22px; color: #03111e; font-size: 15px; line-height: 20px; font-weight: 800; text-decoration: none;"
+                      >
+                        Confirm email address
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td class="email-pad" style="padding: 4px 36px 36px;">
+                <p
+                  style="margin: 0 0 14px; color: #b8cada; font-size: 13px; line-height: 21px;"
+                >
+                  If you did not create or request this account, you can safely
+                  ignore this message.
+                </p>
+                <p
+                  style="margin: 0; color: #819bae; font-size: 12px; line-height: 20px;"
+                >
+                  If the button does not work,
+                  <a
+                    href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email"
+                    style="color: #74dff4; text-decoration: underline;"
+                    >open the secure email confirmation link</a
+                  >.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td
+                class="email-pad"
+                style="padding: 24px 36px; background: #091526; border-top: 1px solid #18384e;"
+              >
+                <p
+                  style="margin: 0; color: #8fa8bb; font-size: 12px; line-height: 20px;"
+                >
+                  Need help? Contact
+                  <a
+                    href="mailto:support@digitalrcc.com"
+                    style="color: #74dff4; text-decoration: none;"
+                    >support@digitalrcc.com</a
+                  >.
+                </p>
+                <p
+                  style="margin: 8px 0 0; color: #657f93; font-size: 11px; line-height: 18px;"
+                >
+                  Digital Resilience Community Clinic · Hands-on cyber
+                  resilience training
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

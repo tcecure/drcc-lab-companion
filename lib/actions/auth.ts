@@ -17,6 +17,10 @@ const invitationSchema = z.object({
   tokenHash: z.string().trim().min(1),
   type: z.literal("invite"),
 });
+const emailConfirmationSchema = z.object({
+  tokenHash: z.string().trim().min(1),
+  type: z.literal("email"),
+});
 
 function message(input: string) {
   return encodeURIComponent(input);
@@ -147,6 +151,33 @@ export async function confirmInvitationAction(formData: FormData) {
   }
 
   redirect("/set-password");
+}
+
+export async function confirmEmailAddressAction(formData: FormData) {
+  const confirmation = emailConfirmationSchema.safeParse({
+    tokenHash: formData.get("tokenHash"),
+    type: formData.get("type"),
+  });
+
+  if (!confirmation.success) {
+    redirect(
+      `/login?error=${message("This email confirmation link is incomplete. Request a new confirmation email.")}`,
+    );
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({
+    token_hash: confirmation.data.tokenHash,
+    type: confirmation.data.type,
+  });
+
+  if (error) {
+    redirect(
+      `/login?error=${message("This email confirmation link is invalid or has expired. Request a new confirmation email.")}`,
+    );
+  }
+
+  redirect("/dashboard");
 }
 
 export async function setPasswordAction(formData: FormData) {

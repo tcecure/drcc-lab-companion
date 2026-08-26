@@ -22,6 +22,16 @@ systems that prefetch links.
 - Body: `recovery.html`
 - Application route: `/auth/recovery`
 
+## Confirm email address
+
+- Dashboard location: Authentication > Email Templates > Confirm signup
+- Subject: `Confirm your DigitalRCC email address`
+- Body: `confirmation.html`
+- Application route: `/auth/confirm`
+
+Like the invitation and recovery flows, confirmation requires a deliberate
+button click on the portal before the one-time token is verified.
+
 ## Required Supabase settings
 
 - Site URL: `https://my.digitalrcc.com`
