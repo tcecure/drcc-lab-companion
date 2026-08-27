@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { labGuides } from "@/lib/lab-guides";
+import { getDigitalGuide, labGuides } from "@/lib/lab-guides";
 
 describe("lab guides", () => {
   it("publishes one guide for every CMMC Level 1 family", () => {
@@ -24,5 +24,16 @@ describe("lab guides", () => {
         true,
       );
     }
+  });
+
+  it("publishes AC as the first versioned digital guide", () => {
+    expect(getDigitalGuide("AC")).toEqual({
+      path: "/guides/ac",
+      version: "2026.08.1",
+    });
+    expect(getDigitalGuide("IA")).toBeNull();
+    expect(
+      existsSync(join(process.cwd(), "content/guides/ac/2026.08.1/guide.mdx")),
+    ).toBe(true);
   });
 });

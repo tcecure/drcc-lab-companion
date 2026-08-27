@@ -1,0 +1,356 @@
+<GuideSection id="before-you-begin" index="00" title="Before you begin">
+
+This guide covers the Access Control (AC) lab family. You will work in your assigned Active Directory pod to manage accounts, correct permissions, apply least privilege, and produce audit evidence.
+
+<GuideCallout title="What you need" tone="check">
+
+- Your assigned pod and student number
+- Your Guacamole username and password
+- A modern web browser
+
+</GuideCallout>
+
+### CMMC Level 1 alignment
+
+| Practice                    | What you practice                                                                                                                     | Labs                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| AC.L1-3.1.1                 | Authorized users, joiner/mover/leaver controls, approved provisioning, offboarding, contractor expiration, and access review evidence | L1.1, L2.1-L2.3, L4.1-L4.3 |
+| AC.L1-3.1.2                 | Authorized functions and least privilege through group membership, nested privilege, and delegated administration                     | L1.2, L1.3, L3.1-L3.3      |
+| AC.L1-3.1.20 / AC.L1-3.1.22 | External connections and public information are discussed in training but are not directly practiced in this lab family               | Reference only             |
+
+</GuideSection>
+
+<GuideSection id="connect" index="01" title="Connect to your lab">
+
+Open [Guacamole](https://crc.guac.01.tcecure.com/#/) and sign in with the credentials issued for your seat. Your username matches your assigned student number.
+
+<dl className="guide-fields">
+  <GuideField label="Student" value="Student {{studentNumber}}" />
+  <GuideField label="Username" value="{{labUsername}}" />
+  <GuideField label="Connection" value="{{domainController}}" />
+  <GuideField label="Domain" value="{{domainName}}" />
+</dl>
+
+1. Open the Guacamole connection named `{{domainController}}`.
+2. Wait for the Windows desktop to load fully.
+3. Use **Ctrl + Alt + Shift** to open the Guacamole side panel. Select **Home** when you need to leave the connection.
+
+<GuideCallout title="Connection boundary" tone="info">
+
+The pfSense gateway is opened from a browser **inside your pod desktop** at `http://{{gatewayAddress}}`. It is not a separate Guacamole connection.
+
+</GuideCallout>
+
+</GuideSection>
+
+<GuideSection id="workspace" index="02" title="Open Active Directory">
+
+Use the **Active Directory Users and Computers** shortcut on the desktop. If the shortcut does not open, launch it from Command Prompt with the fallback below.
+
+```powershell
+cmd /c "set __COMPAT_LAYER=RunAsInvoker&& start "" mmc.exe dsa.msc"
+```
+
+<GuideCallout title="Use ADUC directly" tone="warning">
+
+Do not open Active Directory through Server Manager. The desktop shortcut or fallback command keeps you in the correct lab workflow.
+
+</GuideCallout>
+
+### Your directory structure
+
+Start at `{{domainName}}` **> Students >** `{{podName}}`. Your pod contains these organizational units:
+
+- **Users**: Admins and Staff
+- **Groups**: Security and Distribution
+- **Resources > Departments**: Executive, IT, Finance, HR, Consulting, and Sales
+- **Resources > Computers**: Workstations and Servers
+- **Policies**
+
+Accounts and groups use your pod prefix, `{{podPrefix}}`. Examples include `{{podPrefix}}-ceo.acs`, `{{podPrefix}}-it.admin`, `{{podPrefix}}-it.helpdesk`, and `{{podPrefix}}-SG-ACS-All-Staff`.
+
+</GuideSection>
+
+<GuideSection id="module-1" index="M1" title="Account management">
+
+This module focuses on controlling who has access and what functions each account is authorized to perform.
+
+<GuideLab id="L1.1" title="Disable a terminated account" objective="Remove access for a user who no longer requires it.">
+
+1. In ADUC, open **Students >** `{{podName}}` **> Users > Staff**.
+2. Locate `{{podPrefix}}-ex.employee`.
+3. Right-click the account and select **Disable Account**.
+4. Confirm the account icon displays the disabled indicator.
+5. Optionally open **Member Of** and remove Finance and All-Staff membership.
+
+**Success check:** `{{podPrefix}}-ex.employee` is disabled and can no longer authenticate.
+
+</GuideLab>
+
+<GuideLab id="L1.2" title="Correct unauthorized group access" objective="Remove a user from a business group they are not authorized to use.">
+
+1. Open `{{podPrefix}}-hr.user1` in **Users > Staff**.
+2. Select the **Member Of** tab.
+3. Select the Finance group and choose **Remove**.
+4. Apply the change and verify Finance no longer appears.
+
+**Success check:** The HR user retains appropriate HR access without Finance permissions.
+
+</GuideLab>
+
+<GuideLab id="L1.3" title="Remove excessive administrative privilege" objective="Apply least privilege to a help desk account.">
+
+1. Open `{{podPrefix}}-it.helpdesk`.
+2. Select **Member Of**.
+3. Remove the account from `{{podPrefix}}-SG-ACS-IT-Admins`.
+4. Keep the memberships needed for normal help desk work.
+
+**Success check:** The help desk account is no longer an IT administrator.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-2" index="M2" title="Joiners, movers, and leavers">
+
+Follow the account lifecycle from approved provisioning through role changes and offboarding.
+
+<GuideLab id="L2.1" title="Provision an approved new user" objective="Create an account only after confirming documented approval.">
+
+1. Open the properties for `{{podPrefix}}-ceo.acs` and review the **Description** field for approval of `new.user1`.
+2. In **Users > Staff**, create a user named `{{podPrefix}}-new.user1`.
+3. Set a password with at least 12 characters, including uppercase, lowercase, a number, and a symbol.
+4. Clear **User must change password at next logon** for this lab.
+5. Add the account to `{{podPrefix}}-SG-ACS-All-Staff`.
+
+<GuideCallout title="Approval is part of the control" tone="info">
+
+The technical account creation and the evidence of authorization are both required. Do not provision the account until you find the approval in the CEO account description.
+
+</GuideCallout>
+
+**Success check:** The enabled account exists in Staff and has only the approved baseline membership.
+
+</GuideLab>
+
+<GuideLab id="L2.2" title="Move a user to a new role" objective="Remove old access while preserving permissions required by the new role.">
+
+1. Open `{{podPrefix}}-consult.user1`.
+2. On **Member Of**, remove the old Consulting group membership.
+3. Preserve Sales and All-Staff membership.
+4. Apply the change and reopen the account to verify it persisted.
+
+**Success check:** The user retains Sales and All-Staff access but no longer has Consulting access.
+
+</GuideLab>
+
+<GuideLab id="L2.3" title="Offboard a departing user" objective="Disable access, remove business permissions, and separate the terminated identity.">
+
+1. Locate `{{podPrefix}}-fin.user1` and disable the account.
+2. Remove Finance and All-Staff memberships.
+3. Create a **Terminated** OU under your pod if it does not exist.
+4. Move the disabled account into the Terminated OU.
+
+**Success check:** The account is disabled, has no active business-group access, and is stored in Terminated.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-3" index="M3" title="Least privilege">
+
+Correct misplaced objects, remove inherited privilege, and delegate only the administrative task that is needed.
+
+<GuideLab id="L3.1" title="Place a user in the correct department" objective="Align directory placement with the user's authorized business role.">
+
+1. Find `{{podPrefix}}-sales.user1` in the Executive OU.
+2. Move the account to **Resources > Departments > Sales**.
+3. Reopen the Sales OU and verify the account is present.
+
+<GuideCallout title="Exact OU required" tone="warning">
+
+Move the account to the Sales OU under **Resources > Departments**. A similarly named group or a different Sales container does not satisfy the lab.
+
+</GuideCallout>
+
+**Success check:** The account appears in the exact Sales department OU.
+
+</GuideLab>
+
+<GuideLab id="L3.2" title="Remove nested administrative access" objective="Break a group nesting path that grants excessive privilege.">
+
+1. Open **Groups > Security**.
+2. Open `{{podPrefix}}-SG-ACS-IT-Admins` and select **Members**.
+3. Remove `{{podPrefix}}-SG-ACS-All-Staff` from the member list.
+4. Apply the change and verify it remains removed.
+
+**Success check:** General staff no longer inherit IT administrator access through group nesting.
+
+</GuideLab>
+
+<GuideLab id="L3.3" title="Delegate password resets" objective="Give help desk staff one support function without broad administration rights.">
+
+1. Right-click the **Staff** OU and select **Delegate Control**.
+2. Add `{{podPrefix}}-it.helpdesk`.
+3. Choose the common task **Reset user passwords and force password change at next logon**.
+4. Complete the wizard.
+5. Enable **View > Advanced Features**, open Staff properties, and inspect **Security** to verify the delegated permission.
+
+**Success check:** Help desk can reset passwords in Staff without membership in IT-Admins.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-4" index="M4" title="Audit and evidence">
+
+Complete the access review and store evidence in your assigned artifact folders. Filenames and locations are checked by the training tracker.
+
+<GuideLab id="L4.1" title="Expire a contractor account" objective="Limit temporary access to an approved period.">
+
+1. Open `{{podPrefix}}-contractor.user1`.
+2. On **Account**, set an account expiration date.
+3. Apply the change and reopen the account to verify the date.
+4. You may disable the account immediately if the scenario requires access to end now.
+
+**Success check:** The contractor account has an explicit expiration date.
+
+</GuideLab>
+
+<GuideLab id="L4.2" title="Export an access review" objective="Create nonempty evidence of enabled accounts and group membership.">
+
+Open PowerShell on `{{domainController}}` and export the enabled-user review to the exact Lab4-2 folder.
+
+```powershell
+Get-ADUser -Filter {Enabled -eq $true} -SearchBase "OU={{podName}},OU=Students,DC=acs-p01,DC=local" -Properties MemberOf |
+  Select-Object Name, SamAccountName, Enabled |
+  Export-Csv "{{artifactsPath}}Lab4-2\review.csv" -NoTypeInformation
+```
+
+Optionally create a detailed group-membership export for your records.
+
+```powershell
+Get-ADGroup -Filter * -SearchBase "OU={{podName}},OU=Students,DC=acs-p01,DC=local" |
+  ForEach-Object {
+    $group = $_.Name
+    Get-ADGroupMember $_ -ErrorAction SilentlyContinue |
+      Select-Object @{N='Group';E={$group}}, Name, SamAccountName
+  } |
+  Export-Csv "{{artifactsPath}}Lab4-2\group_memberships.csv" -NoTypeInformation
+```
+
+Verify the expected files exist and are not empty.
+
+```powershell
+Get-ChildItem "{{artifactsPath}}Lab4-2"
+```
+
+<GuideCallout title="Tracker requirement" tone="warning">
+
+The required file is named exactly `review.csv` and must contain exported data. A renamed or empty file will not complete the lab.
+
+</GuideCallout>
+
+</GuideLab>
+
+<GuideLab id="L4.3" title="Complete the access review package" objective="Replace placeholder evidence and document the review result.">
+
+Inspect the existing file before replacing the placeholder content.
+
+```powershell
+Get-ChildItem "{{artifactsPath}}Lab4-3"
+Get-Content "{{artifactsPath}}Lab4-3\enabled_users.csv"
+```
+
+Export the current enabled-user inventory.
+
+```powershell
+Get-ADUser -Filter {Enabled -eq $true} -SearchBase "OU={{podName}},OU=Students,DC=acs-p01,DC=local" -Properties MemberOf, Description |
+  Select-Object Name, SamAccountName, Enabled, Description |
+  Export-Csv "{{artifactsPath}}Lab4-3\enabled_users.csv" -NoTypeInformation -Force
+```
+
+Export current group membership.
+
+```powershell
+Get-ADGroup -Filter * -SearchBase "OU={{podName}},OU=Students,DC=acs-p01,DC=local" |
+  ForEach-Object {
+    $group = $_.Name
+    Get-ADGroupMember $_ -ErrorAction SilentlyContinue |
+      Select-Object @{N='Group';E={$group}}, Name, SamAccountName
+  } |
+  Export-Csv "{{artifactsPath}}Lab4-3\group_memberships.csv" -NoTypeInformation -Force
+```
+
+Create the review summary and replace `[Your Name]` before running the command.
+
+```powershell
+$date = Get-Date -Format "yyyy-MM-dd"
+$summary = @"
+Access Control Review - {{podName}}
+Date: $date
+Reviewer: [Your Name]
+Findings:
+- All enabled accounts have been reviewed
+- Group memberships documented in group_memberships.csv
+- Enabled user list documented in enabled_users.csv
+Status: Review Complete
+"@
+Set-Content "{{artifactsPath}}Lab4-3\review_summary.txt" $summary
+```
+
+Verify all three evidence files are present.
+
+```powershell
+Get-ChildItem "{{artifactsPath}}Lab4-3"
+```
+
+**Success check:** `enabled_users.csv`, `group_memberships.csv`, and `review_summary.txt` contain current review evidence.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="quick-reference" index="QR" title="Quick reference">
+
+| Item               | Your value                  |
+| ------------------ | --------------------------- |
+| Student            | Student `{{studentNumber}}` |
+| Pod                | `{{podName}}`               |
+| Guacamole username | `{{labUsername}}`           |
+| Domain controller  | `{{domainController}}`      |
+| Domain             | `{{domainName}}`            |
+| Account prefix     | `{{podPrefix}}`             |
+| Artifact root      | `{{artifactsPath}}`         |
+
+### Troubleshooting tips
+
+- Refresh ADUC after making a change before deciding it did not persist.
+- Check the exact OU, group name, filename, and artifact path when the tracker does not recognize a completed task.
+- Run PowerShell commands on your assigned domain controller.
+- Use the portal's Support page if a lab service is unavailable or the expected pod objects are missing.
+
+</GuideSection>
+
+<GuideSection id="completion-checklist" index="OK" title="Completion checklist">
+
+- [ ] L1.1 Terminated account disabled
+- [ ] L1.2 Unauthorized Finance membership removed
+- [ ] L1.3 Help desk administrative privilege removed
+- [ ] L2.1 Approved new user provisioned
+- [ ] L2.2 Mover access corrected
+- [ ] L2.3 Departing user offboarded
+- [ ] L3.1 Sales user moved to the correct OU
+- [ ] L3.2 Nested administrative access removed
+- [ ] L3.3 Password-reset control delegated
+- [ ] L4.1 Contractor expiration set
+- [ ] L4.2 Access review exported
+- [ ] L4.3 Review package completed
+
+<GuideCallout title="You are ready to continue" tone="check">
+
+Confirm all 12 Access Control labs in the training tracker, then continue to the next assigned lab family.
+
+</GuideCallout>
+
+</GuideSection>

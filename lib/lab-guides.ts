@@ -6,6 +6,8 @@ export const labGuides = [
     title: "Access Control",
     description:
       "Active Directory, Group Policy, permissions, and account access.",
+    digitalGuidePath: "/guides/ac",
+    digitalGuideVersion: "2026.08.1",
     guidePath: "/guides/ac-lab-completion-guide.pdf",
     labCount: 12,
     pageCount: 17,
@@ -64,3 +66,16 @@ export const labGuides = [
 ] as const;
 
 export type LabGuide = (typeof labGuides)[number];
+
+export function getDigitalGuide(code: LabGuide["code"]) {
+  const guide = labGuides.find((candidate) => candidate.code === code);
+
+  if (!guide || !("digitalGuidePath" in guide)) {
+    return null;
+  }
+
+  return {
+    path: guide.digitalGuidePath,
+    version: guide.digitalGuideVersion,
+  };
+}

@@ -58,6 +58,8 @@ export default async function GuidesPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {labGuides.map((family) => {
           const FamilyIcon = labFamilyIcons[family.code];
+          const digitalGuide =
+            "digitalGuidePath" in family ? family.digitalGuidePath : null;
           const workspace = identity
             ? family.workspace === "dc"
               ? identity.domainController
@@ -91,15 +93,36 @@ export default async function GuidesPage() {
                     <dd className="mt-1 break-all font-bold">{workspace}</dd>
                   </div>
                 </dl>
-                <a
-                  className="button mt-5"
-                  href={family.guidePath}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open {family.code} Guide
-                  <ExternalLink aria-hidden="true" size={16} />
-                </a>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {digitalGuide ? (
+                    <Link className="button" href={digitalGuide}>
+                      Read digital guide
+                    </Link>
+                  ) : (
+                    <a
+                      className="button"
+                      href={family.guidePath}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open {family.code} Guide
+                      <ExternalLink aria-hidden="true" size={16} />
+                    </a>
+                  )}
+                  {digitalGuide ? (
+                    <a
+                      aria-label={`Open ${family.code} PDF guide`}
+                      className="button secondary"
+                      href={family.guidePath}
+                      rel="noreferrer"
+                      target="_blank"
+                      title="Open PDF guide"
+                    >
+                      PDF
+                      <ExternalLink aria-hidden="true" size={16} />
+                    </a>
+                  ) : null}
+                </div>
               </Card>
             </div>
           );

@@ -7,6 +7,8 @@ import type { Database } from "@/lib/types";
 export type StudentCohortAssignment =
   Database["public"]["Tables"]["student_cohort_assignments"]["Row"];
 
+export type StudentLabIdentity = ReturnType<typeof buildStudentLabIdentity>;
+
 export async function getStudentCohortAssignment(userId: string) {
   const supabase = await createClient();
   const { data } = await supabase
@@ -28,10 +30,21 @@ export function getStudentLabIdentity(
     return null;
   }
 
-  const seatNumber = assignment.seat_number;
+  return buildStudentLabIdentity(
+    assignment.seat_number,
+    assignment.pod_name,
+    assignment.lab_username,
+  );
+}
+
+export function buildStudentLabIdentity(
+  seatNumber: number,
+  assignedPodName?: string | null,
+  assignedLabUsername?: string | null,
+) {
   const studentNumber = String(seatNumber).padStart(2, "0");
-  const podName = assignment.pod_name || `Pod${studentNumber}`;
-  const labUsername = assignment.lab_username || `student${studentNumber}`;
+  const podName = assignedPodName || `Pod${studentNumber}`;
+  const labUsername = assignedLabUsername || `student${studentNumber}`;
   const domainName = "acs-p01.local";
   const netbiosDomain = "ACS-P01";
   const { gatewayAddress, podNetwork } = getPodAddresses(seatNumber);
@@ -39,6 +52,7 @@ export function getStudentLabIdentity(
   return {
     studentNumber,
     podName,
+    podPrefix: `P${studentNumber}`,
     podGroup: `POD${studentNumber}`,
     labUsername,
     domainName,
