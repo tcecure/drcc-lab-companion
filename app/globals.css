@@ -88,17 +88,19 @@ textarea {
   backdrop-filter: blur(24px);
 }
 
-.brand-mark {
+.brand-logo {
   display: grid;
-  height: 2.75rem;
-  width: 2.75rem;
+  height: 3.75rem;
+  width: 3.75rem;
+  flex: 0 0 3.75rem;
   place-items: center;
-  border-radius: 0.6rem;
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #03111f;
-  font-size: 0.85rem;
-  font-weight: 800;
-  box-shadow: 0 16px 36px rgba(34, 211, 238, 0.22);
+}
+
+.brand-logo img {
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(34, 211, 238, 0.22));
 }
 
 .sidebar-link {

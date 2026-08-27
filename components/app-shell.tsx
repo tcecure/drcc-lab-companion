@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { BrandLogo } from "@/components/brand-logo";
 import { logoutAction } from "@/lib/actions/auth";
 import { canManage, isAdmin, type PortalRole } from "@/lib/roles";
 
@@ -84,7 +85,7 @@ export function AppShell({
     <main className="app-shell">
       <aside className="sidebar">
         <div className="flex items-center gap-3 border-b border-cyan-200/10 pb-5">
-          <span className="brand-mark">DR</span>
+          <BrandLogo />
           <div>
             <p className="font-bold">DigitalRCC</p>
             <p className="text-xs text-slate-400">Lab Companion</p>
