@@ -13,6 +13,7 @@ import {
   ListChecks,
   LogOut,
   Mail,
+  MessageSquareText,
   Server,
   ShieldCheck,
   User,
@@ -40,7 +41,7 @@ const studentNav: NavItem[] = [
   { href: "/student/training", icon: GraduationCap, label: "Training" },
   { href: "/student/notifications", icon: Bell, label: "Notifications" },
   { href: "/student/profile", icon: User, label: "Profile" },
-  { href: "/support", icon: HelpCircle, label: "Support" },
+  { href: "/student/support", icon: HelpCircle, label: "Support" },
 ];
 
 const adminNav: NavItem[] = [
@@ -54,6 +55,12 @@ const adminNav: NavItem[] = [
   { href: "/admin/guides", icon: BookOpen, label: "Current Lab Guides" },
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
   { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
+  {
+    adminOnly: true,
+    href: "/admin/support",
+    icon: MessageSquareText,
+    label: "Support Tickets",
+  },
   { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals" },
   { href: "/admin/queue", icon: Users, label: "Student Queue" },
   {

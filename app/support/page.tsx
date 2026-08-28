@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LifeBuoy, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, LifeBuoy, LockKeyhole, LogIn } from "lucide-react";
 
 import {
   CohortUpdate,
@@ -9,18 +9,22 @@ import {
   ResolvedIssuesArchive,
 } from "@/components/known-issues";
 import { PublicHeader } from "@/components/public-header";
-import { getSupportEmail } from "@/lib/support";
+import { getCurrentUser, getUserRoles } from "@/lib/auth";
+import { canManage } from "@/lib/roles";
 
 export const metadata: Metadata = {
   title: "Support",
   description: "Known issues and student support for DigitalRCC labs.",
 };
 
-export default function SupportPage() {
-  const supportEmail = getSupportEmail();
-  const emailHref = `mailto:${supportEmail}?subject=${encodeURIComponent(
-    "DigitalRCC Lab Support Request",
-  )}`;
+export default async function SupportPage() {
+  const user = await getCurrentUser();
+  const roles = user ? await getUserRoles(user.id) : [];
+  const ticketHref = user
+    ? canManage(roles)
+      ? "/admin/support"
+      : "/student/support/new"
+    : "/login?redirectTo=/student/support/new";
 
   return (
     <>
@@ -51,7 +55,7 @@ export default function SupportPage() {
           <ResolvedIssuesArchive />
         </div>
 
-        <section className="mt-8 grid gap-6 rounded-lg border border-cyan-200/15 bg-slate-950/55 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-center">
+        <section className="mt-8 grid gap-6 rounded-lg border border-cyan-200/15 bg-slate-950/55 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-center">
           <div>
             <h2 className="text-2xl font-bold">Still need help?</h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
@@ -66,14 +70,31 @@ export default function SupportPage() {
               />
               <p>
                 Never include your password or invitation link in a support
-                email.
+                request.
               </p>
             </div>
           </div>
-          <Link className="button w-full" href={emailHref}>
-            <Mail aria-hidden="true" size={17} />
-            Email {supportEmail}
-          </Link>
+          <div className="grid gap-3">
+            <Link className="button w-full" href={ticketHref}>
+              {user ? (
+                <LifeBuoy aria-hidden="true" size={17} />
+              ) : (
+                <LogIn aria-hidden="true" size={17} />
+              )}
+              {user
+                ? canManage(roles)
+                  ? "Open support queue"
+                  : "Open support ticket"
+                : "Sign in to open a ticket"}
+            </Link>
+            <Link
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold text-cyan-100 hover:bg-white/5"
+              href="/support/request"
+            >
+              Having trouble signing in?
+              <ArrowRight aria-hidden="true" size={15} />
+            </Link>
+          </div>
         </section>
       </main>
     </>

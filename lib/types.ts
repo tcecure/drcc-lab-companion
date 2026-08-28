@@ -1168,14 +1168,16 @@ export type Database = {
       support_requests: {
         Row: {
           id: string;
-          user_id: string;
+          user_id: string | null;
           lab_assignment_id: string | null;
           category:
+            | "account_access"
             | "connectivity"
             | "guacamole"
             | "vpn"
             | "lab_guide"
             | "verification"
+            | "course_platform"
             | "other";
           subject: string;
           description: string;
@@ -1187,13 +1189,18 @@ export type Database = {
             | "resolved"
             | "closed";
           assigned_to: string | null;
+          requester_name: string | null;
+          requester_email: string | null;
+          lab_family: "AC" | "IA" | "SI" | "SC" | "MP" | "PE" | null;
+          pod_name: string | null;
+          last_message_at: string;
           created_at: string;
           updated_at: string;
           resolved_at: string | null;
         };
         Insert: {
           id?: string;
-          user_id: string;
+          user_id?: string | null;
           lab_assignment_id?: string | null;
           category: Database["public"]["Tables"]["support_requests"]["Row"]["category"];
           subject: string;
@@ -1201,6 +1208,11 @@ export type Database = {
           priority?: Database["public"]["Tables"]["support_requests"]["Row"]["priority"];
           status?: Database["public"]["Tables"]["support_requests"]["Row"]["status"];
           assigned_to?: string | null;
+          requester_name?: string | null;
+          requester_email?: string | null;
+          lab_family?: Database["public"]["Tables"]["support_requests"]["Row"]["lab_family"];
+          pod_name?: string | null;
+          last_message_at?: string;
           created_at?: string;
           updated_at?: string;
           resolved_at?: string | null;
@@ -1213,6 +1225,11 @@ export type Database = {
           priority?: Database["public"]["Tables"]["support_requests"]["Row"]["priority"];
           status?: Database["public"]["Tables"]["support_requests"]["Row"]["status"];
           assigned_to?: string | null;
+          requester_name?: string | null;
+          requester_email?: string | null;
+          lab_family?: Database["public"]["Tables"]["support_requests"]["Row"]["lab_family"];
+          pod_name?: string | null;
+          last_message_at?: string;
           updated_at?: string;
           resolved_at?: string | null;
         };
@@ -1229,6 +1246,68 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      support_messages: {
+        Row: {
+          id: string;
+          support_request_id: string;
+          author_user_id: string | null;
+          author_role: "requester" | "staff" | "system";
+          body: string;
+          is_internal: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          support_request_id: string;
+          author_user_id?: string | null;
+          author_role: Database["public"]["Tables"]["support_messages"]["Row"]["author_role"];
+          body: string;
+          is_internal?: boolean;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "support_messages_support_request_id_fkey";
+            columns: ["support_request_id"];
+            isOneToOne: false;
+            referencedRelation: "support_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      support_attachments: {
+        Row: {
+          id: string;
+          support_message_id: string;
+          uploaded_by: string | null;
+          storage_path: string;
+          file_name: string;
+          mime_type: "image/jpeg" | "image/png" | "image/webp";
+          size_bytes: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          support_message_id: string;
+          uploaded_by?: string | null;
+          storage_path: string;
+          file_name: string;
+          mime_type: Database["public"]["Tables"]["support_attachments"]["Row"]["mime_type"];
+          size_bytes: number;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "support_attachments_support_message_id_fkey";
+            columns: ["support_message_id"];
+            isOneToOne: false;
+            referencedRelation: "support_messages";
             referencedColumns: ["id"];
           },
         ];

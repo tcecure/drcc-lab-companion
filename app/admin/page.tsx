@@ -15,6 +15,7 @@ export default async function AdminPage() {
     { count: notifiedStudents },
     { count: activeStudents },
     { count: labRequests },
+    { count: supportTickets },
     { data: capacity },
     labStatus,
   ] = await Promise.all([
@@ -34,6 +35,10 @@ export default async function AdminPage() {
       .from("lab_requests")
       .select("id", { count: "exact", head: true })
       .in("status", ["submitted", "queued", "on_hold"]),
+    supabase
+      .from("support_requests")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["open", "in_progress"]),
     supabase
       .from("lab_capacity_settings")
       .select("maximum_active, maximum_reserved, standard_duration_days")
@@ -72,6 +77,12 @@ export default async function AdminPage() {
           label="Lab Request"
           value={labRequests ?? 0}
         />
+        <MetricCard
+          helper="New or active student issues that need staff attention."
+          href="/admin/support"
+          label="Support Tickets"
+          value={supportTickets ?? 0}
+        />
       </section>
       <section className="grid gap-4 md:grid-cols-2">
         <Card eyebrow="Student Operations" title="Queue and Intake">
@@ -81,6 +92,7 @@ export default async function AdminPage() {
             <Action href="/admin/progress" label="Student progress" />
             <Action href="/admin/approvals" label="Approvals" />
             <Action href="/admin/email-jobs" label="Email jobs" />
+            <Action href="/admin/support" label="Support tickets" />
           </div>
         </Card>
         <Card eyebrow="Lab Operations" title="Environment Controls">

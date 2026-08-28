@@ -7,6 +7,16 @@ const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url(),
   CRON_SECRET: z.string().optional(),
   EMAIL_DELIVERY_MODE: z.enum(["mock", "live"]).default("mock"),
+  SUPPORT_EMAIL_DELIVERY_MODE: z.enum(["mock", "live"]).default("mock"),
+  SUPPORT_EMAIL: z.string().email().default("support@digitalrcc.com"),
+  SUPPORT_NOTIFY_EMAIL: z.string().email().default("cyberlab@tcecure.com"),
+  SUPPORT_FROM_NAME: z
+    .string()
+    .default("Digital Resilience Community Clinic Support"),
+  SUPPORT_SMTP_HOST: z.string().default("smtp.gmail.com"),
+  SUPPORT_SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SUPPORT_SMTP_USER: z.string().email().optional(),
+  SUPPORT_SMTP_PASSWORD: z.string().optional(),
   SES_FROM_ADDRESS: z.string().email().optional(),
   SES_REPLY_TO_ADDRESS: z.string().email().optional(),
   AWS_REGION: z.string().optional(),
@@ -62,6 +72,20 @@ export function readServerEnv() {
       value(process.env.SUPABASE_SERVICE_ROLE_KEY),
     CRON_SECRET: value(process.env.CRON_SECRET),
     EMAIL_DELIVERY_MODE: value(process.env.EMAIL_DELIVERY_MODE),
+    SUPPORT_EMAIL_DELIVERY_MODE: value(
+      process.env.SUPPORT_EMAIL_DELIVERY_MODE,
+    ),
+    SUPPORT_EMAIL: value(process.env.SUPPORT_EMAIL),
+    SUPPORT_NOTIFY_EMAIL: value(process.env.SUPPORT_NOTIFY_EMAIL),
+    SUPPORT_FROM_NAME: value(process.env.SUPPORT_FROM_NAME),
+    SUPPORT_SMTP_HOST: value(process.env.SUPPORT_SMTP_HOST),
+    SUPPORT_SMTP_PORT: value(process.env.SUPPORT_SMTP_PORT),
+    SUPPORT_SMTP_USER:
+      value(process.env.SUPPORT_SMTP_USER) ??
+      value(process.env.GOOGLE_SMTP_USER),
+    SUPPORT_SMTP_PASSWORD:
+      value(process.env.SUPPORT_SMTP_PASSWORD) ??
+      value(process.env.GOOGLE_SMTP_APP_PASSWORD),
     SES_FROM_ADDRESS: value(process.env.SES_FROM_ADDRESS),
     SES_REPLY_TO_ADDRESS: value(process.env.SES_REPLY_TO_ADDRESS),
     AWS_REGION: value(process.env.AWS_REGION),

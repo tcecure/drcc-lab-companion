@@ -2,24 +2,41 @@ import "server-only";
 
 import { createHash, createHmac } from "node:crypto";
 
+import nodemailer from "nodemailer";
+
 import { readServerEnv, type ServerEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/types";
 
-type EmailContent = {
+export type EmailContent = {
   subject: string;
   text: string;
   html: string;
 };
 
-function paragraphsToHtml(subject: string, paragraphs: string[]) {
-  const body = paragraphs
-    .map((paragraph) => `<p style="margin:0 0 16px">${paragraph}</p>`)
-    .join("");
-
-  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a"><h1 style="font-size:19px;margin:0 0 18px">${subject}</h1>${body}</div>`;
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function buildEmail(subject: string, paragraphs: string[]): EmailContent {
+function paragraphsToHtml(subject: string, paragraphs: string[]) {
+  const body = paragraphs
+    .map(
+      (paragraph) => `<p style="margin:0 0 16px">${escapeHtml(paragraph)}</p>`,
+    )
+    .join("");
+
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a"><h1 style="font-size:19px;margin:0 0 18px">${escapeHtml(subject)}</h1>${body}</div>`;
+}
+
+export function buildEmail(
+  subject: string,
+  paragraphs: string[],
+): EmailContent {
   return {
     subject,
     text: paragraphs.join("\n\n"),
@@ -65,21 +82,29 @@ export async function queueEmail(input: {
   payload: Record<string, string | number | null>;
 }) {
   const supabase = createAdminClient();
-  const { error } = await supabase.from("email_jobs").insert({
-    user_id: input.userId,
-    template_name: input.templateName,
-    recipient: input.recipient,
-    subject: input.content.subject,
-    payload: input.payload,
-    rendered_text: input.content.text,
-    rendered_html: input.content.html,
-    status: "queued",
-  });
+  const { data, error } = await supabase
+    .from("email_jobs")
+    .insert({
+      user_id: input.userId,
+      template_name: input.templateName,
+      recipient: input.recipient,
+      subject: input.content.subject,
+      payload: input.payload,
+      rendered_text: input.content.text,
+      rendered_html: input.content.html,
+      status: "queued",
+    })
+    .select("id")
+    .single();
 
-  if (error) {
-    throw new Error(error.message);
+  if (error || !data) {
+    throw new Error(error?.message ?? "Email job could not be queued.");
   }
+
+  return data.id;
 }
+
+type EmailJob = Database["public"]["Tables"]["email_jobs"]["Row"];
 
 /**
  * Sends queued email jobs. With `EMAIL_DELIVERY_MODE=mock` (the default) jobs
@@ -104,44 +129,123 @@ export async function processQueuedEmails(limit = 100) {
   let failed = 0;
 
   for (const job of jobs ?? []) {
-    await supabase
-      .from("email_jobs")
-      .update({
-        status: "sending",
-        attempts: job.attempts + 1,
-        error_message: null,
-      })
-      .eq("id", job.id);
+    const result = await deliverEmailJob(supabase, env, job);
 
-    try {
-      if (env.EMAIL_DELIVERY_MODE === "live") {
-        await sendSesEmail(env, {
-          to: job.recipient,
-          subject: job.subject,
-          text: job.rendered_text ?? job.subject,
-          html: job.rendered_html ?? `<p>${job.subject}</p>`,
-        });
-      }
-
-      await supabase
-        .from("email_jobs")
-        .update({ status: "sent", sent_at: new Date().toISOString() })
-        .eq("id", job.id);
+    if (result === "sent") {
       sent += 1;
-    } catch (sendError) {
-      await supabase
-        .from("email_jobs")
-        .update({
-          status: "failed",
-          error_message:
-            sendError instanceof Error ? sendError.message : "Send failed.",
-        })
-        .eq("id", job.id);
+    } else {
       failed += 1;
     }
   }
 
   return { mode: env.EMAIL_DELIVERY_MODE, sent, failed };
+}
+
+export async function processEmailJob(jobId: string) {
+  const env = readServerEnv();
+  const supabase = createAdminClient();
+  const { data: job, error } = await supabase
+    .from("email_jobs")
+    .select("*")
+    .eq("id", jobId)
+    .single();
+
+  if (error || !job) {
+    throw new Error(error?.message ?? "Email job was not found.");
+  }
+
+  const status = await deliverEmailJob(supabase, env, job);
+
+  return { mode: deliveryMode(env, job), status };
+}
+
+function deliveryMode(env: ServerEnv, job: EmailJob) {
+  return job.template_name.startsWith("support_")
+    ? env.SUPPORT_EMAIL_DELIVERY_MODE
+    : env.EMAIL_DELIVERY_MODE;
+}
+
+async function deliverEmailJob(
+  supabase: ReturnType<typeof createAdminClient>,
+  env: ServerEnv,
+  job: EmailJob,
+) {
+  await supabase
+    .from("email_jobs")
+    .update({
+      status: "sending",
+      attempts: job.attempts + 1,
+      error_message: null,
+    })
+    .eq("id", job.id);
+
+  try {
+    if (deliveryMode(env, job) === "live") {
+      const message = {
+        to: job.recipient,
+        subject: job.subject,
+        text: job.rendered_text ?? job.subject,
+        html: job.rendered_html ?? `<p>${escapeHtml(job.subject)}</p>`,
+      };
+
+      if (job.template_name.startsWith("support_")) {
+        await sendSupportEmail(env, message);
+      } else {
+        await sendSesEmail(env, message);
+      }
+    }
+
+    await supabase
+      .from("email_jobs")
+      .update({ status: "sent", sent_at: new Date().toISOString() })
+      .eq("id", job.id);
+
+    return "sent" as const;
+  } catch (sendError) {
+    await supabase
+      .from("email_jobs")
+      .update({
+        status: "failed",
+        error_message:
+          sendError instanceof Error ? sendError.message : "Send failed.",
+      })
+      .eq("id", job.id);
+
+    return "failed" as const;
+  }
+}
+
+async function sendSupportEmail(
+  env: ServerEnv,
+  message: { to: string; subject: string; text: string; html: string },
+) {
+  if (!env.SUPPORT_SMTP_USER || !env.SUPPORT_SMTP_PASSWORD) {
+    return sendSesEmail(env, message);
+  }
+
+  const transport = nodemailer.createTransport({
+    host: env.SUPPORT_SMTP_HOST,
+    port: env.SUPPORT_SMTP_PORT,
+    secure: env.SUPPORT_SMTP_PORT === 465,
+    auth: {
+      user: env.SUPPORT_SMTP_USER,
+      pass: env.SUPPORT_SMTP_PASSWORD,
+    },
+  });
+
+  await transport.sendMail({
+    from: {
+      name: env.SUPPORT_FROM_NAME,
+      address: env.SUPPORT_EMAIL,
+    },
+    replyTo: env.SUPPORT_EMAIL,
+    to: message.to,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+    disableFileAccess: true,
+    disableUrlAccess: true,
+  });
 }
 
 async function sendSesEmail(
