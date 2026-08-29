@@ -3,9 +3,12 @@
 Read-only comparison of the two Supabase projects, taken before any Phase 2 migration is
 written. Nothing was applied to either database to produce this document.
 
-> **Superseded in one respect.** The owner has confirmed there is no staging environment, so
-> the "apply to staging first" step below no longer exists. The Phase 2 broker migration was
-> validated on an isolated Postgres and applied straight to production; see
+> **Superseded where it treats staging as a target.** `DRCC-staging`
+> (`cudbheihfdvbetwtcfdi`) is legacy and unavailable — nothing is deployed against it and it is
+> not kept in sync — so the "apply to staging first" ordering in section 5 no longer exists.
+> The comparison below is still useful as the record of *why* the Phase 2 code must not assume
+> a requester profile or a non-null `user_id`. Current procedure:
+> [production-first-workflow.md](./production-first-workflow.md); what was applied:
 > [phase2-apply-log.md](./phase2-apply-log.md).
 
 | Project | Ref | Public tables |
@@ -26,11 +29,11 @@ workflow exists **only in production**:
 Consequences for Phase 2:
 
 - the conversation intake, the internal findings note and the approval broker cannot be
-  exercised in staging as it stands. Staging is missing the tables they read and write;
-- the repository already contains the migration that creates them,
-  `supabase/migrations/20260828000000_support_ticket_portal.sql`. Staging needs that applied
-  **before** the Phase 2 staging tests, and that is the only thing staging is missing here —
-  no new table has to be invented for it.
+  exercised in staging at all: it is missing the tables they read and write. This is one of
+  the reasons staging is not a usable gate;
+- production already has them, from
+  `supabase/migrations/20260828000000_support_ticket_portal.sql`. No new table has to be
+  invented for Phase 2 — the conversation half is already there to read.
 
 ## 2. `support_requests` column drift
 
@@ -54,7 +57,7 @@ Consequences:
 
 - `last_message_at` is what the freshness check compares against, and `pod_name` /
   `lab_family` are what the brief prefers over the assignment lookup. Both are production
-  columns today, so the same `20260828000000` migration reconciles staging;
+  columns today, which is all Phase 2 needs;
 - the nullable `user_id` in production means an email-originated ticket can exist without a
   portal account. LabOps code must not assume a requester profile exists — it already does
   not: nothing in the intake path reads `user_id`, and the brief never carries it;
@@ -104,11 +107,16 @@ retyped or renamed, and every addition is nullable or defaulted so existing rows
 `last_error`), so the broker reuses it rather than adding a queue. It is production-only
 today — see section 1.
 
-## 5. Reconciliation order
+## 5. Reconciliation order (as executed)
 
-1. Apply the existing `20260828000000_support_ticket_portal.sql` to **staging** so staging
-   matches production's ticket schema. Nothing to apply to production; it is already there.
-2. Review the checkpoint 6 proposed migration.
-3. Apply checkpoint 6 to an isolated database and run the migration tests.
-4. Apply to staging; run the RLS and end-to-end tests there.
-5. Only then propose it for production, as a separate approval.
+The staging steps were dropped once the owner confirmed staging does not exist. What actually
+happened:
+
+1. Review the checkpoint 6 migration.
+2. Apply it to an isolated local Postgres, run the behavioural checks, replay for idempotency.
+3. Apply it to production on explicit approval.
+4. Verify production read-only, then replay the invariants against production in a transaction
+   that rolls back.
+
+Staging needs nothing: it is not a deployment target. See
+[production-first-workflow.md](./production-first-workflow.md).

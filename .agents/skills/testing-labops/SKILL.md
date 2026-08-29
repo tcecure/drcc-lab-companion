@@ -1,16 +1,34 @@
 ---
 name: testing-labops
-description: How to run and test the DigitalRCC LabOps AI staff console (app/admin/labops, app/api/labops/*) locally against the DRCC-staging Supabase project, including seeding usable auth accounts, exercising the owner-only start path, and checking secret leakage.
+description: How to run and test the DigitalRCC LabOps AI staff console (app/admin/labops, app/api/labops/*), including local runs with canary credentials, what can and cannot be verified against production, exercising the owner-only start path, and checking secret leakage.
 ---
 
 # Testing the LabOps AI console locally
 
-## Run the app against staging Supabase (never production)
+## There is no staging project
 
-Staging project ref: `cudbheihfdvbetwtcfdi` (has the `ai_*` tables). Production `kkacbtkacadgsnbylkti`
-should be treated read-only at most.
+`DRCC-staging` (`cudbheihfdvbetwtcfdi`) is **legacy and unavailable**: nothing is deployed
+against it, it is not kept in sync, and it lacks `support_messages` / `support_attachments`, so
+the conversation, findings-note and broker paths cannot run there. Do not plan a test around
+it. Production is `kkacbtkacadgsnbylkti` and the workflow is production-first — see
+`docs/labops-ai/production-first-workflow.md`.
 
-Fetch staging keys with the Supabase Management API (needs `SUPABASE_ACCESS_TOKEN`) and start
+What that means for testing:
+
+- **Reads against production are fine** (structural `select`s, page renders, anonymous status
+  codes). Treat production as read-only.
+- **Never run `supabase/tests/labops/run_staging.sh` against production**: it commits fixture
+  rows. `supabase/tests/labops/prod_behaviour.sql` is the production-safe pattern — one
+  transaction that ends in `raise`, so everything it wrote rolls back and results come back in
+  the exception message.
+- **End-to-end runs use a designated test `support_requests` row**, recognisable as a test
+  record, never a real student's ticket.
+- A local `next dev` with **canary** credentials is still the right harness for authorization,
+  leak and error-path testing, and needs no live database beyond reads.
+
+## Running the app locally
+
+Fetch keys with the Supabase Management API (needs `SUPABASE_ACCESS_TOKEN`) and start
 `next dev` with them exported. Put the env in a small launcher script and start it with
 `setsid nohup /tmp/start.sh > /tmp/dev.log 2>&1 < /dev/null &` — backgrounding a long inline
 `export ... && npx next dev` chain directly from the shell tool tends to die with the tool call.
@@ -33,9 +51,9 @@ scan page HTML and API bodies for the canary strings and for the private URL. Un
 `LABOPS_*` reproduces not-configured mode (`isLabOpsConfigured()` false → 503 `not_configured`
 on every gateway route, and the "LabOps AI is not installed on this host" card on the page).
 
-## Getting usable staging logins
+## Getting usable logins (applies to any project you seed accounts in)
 
-Seeded `auth.users` rows in staging may be unusable: `instance_id`, `aud`, `role`, timestamps and
+Hand-seeded `auth.users` rows may be unusable: `instance_id`, `aud`, `role`, timestamps and
 password/token metadata can be NULL, which makes the Auth admin API answer `404 user_not_found`
 and password login fail. Repair them via the Management API `database/query` endpoint by setting
 `instance_id`, `aud='authenticated'`, `role='authenticated'`, `email_confirmed_at`, a bcrypt
@@ -57,14 +75,14 @@ data, loosening the schema to a plain UUID regex would be the fix.
 ## Testing the deployed pilot (drcc-labops-01 behind https://labops.drcc.digitalrcc.com)
 
 The live gateway is a Next.js *standalone* build, so `NEXT_PUBLIC_*` values are inlined at BUILD
-time: a release built with a `.env.local` pointing at production will authenticate against the
-wrong Supabase project even though `/etc/labops/labops.env` says staging. Symptom: "Invalid login
-credentials" for known-good staging accounts. Diagnose by grepping the served bundle for the
+time: a release built with a `.env.local` pointing at the wrong project will authenticate against
+that project no matter what the host env file says. Symptom: "Invalid login credentials" for
+known-good accounts. Diagnose by grepping the served bundle for the
 project ref (`grep -r <ref> /opt/labops/app/current/.next`) or by scanning `/_next/static/**.js`
 over HTTP. The stricter env schema also requires `NEXT_PUBLIC_APP_URL`; if it is missing every
 page render throws a ZodError → 500.
 
-Staging passwords may need resetting through the Auth admin API before live login works; the
+Test passwords may need resetting through the Auth admin API before live login works; the
 browser `click`/`type` tool often reports "Browser action failed" on this login form even when the
 submission succeeded — always `view` to confirm instead of retrying.
 
@@ -84,6 +102,11 @@ approval-decision path cannot be exercised at all — plan for them to stay unte
 reaches the provider. `/api/labops/health` now makes an authenticated call too, so `agentServer:
 "ok"` does prove the key works, but it still does NOT prove conversation creation works.
 
+Phase 2 changed this hop: the gateway launches one container per investigation and resolves its
+address at run time, so there is no fixed `LABOPS_AGENT_SERVER_URL` on the host and "agent down"
+is reproduced locally by pointing at a dead port rather than by stopping a shared service. The
+provider key lives only in the model proxy (`/etc/labops/model-proxy.env`).
+
 ### Malformed vs unknown path ids
 `isUuid()` in `lib/labops/http.ts` guards investigation GET/PATCH, cancel, activity, approvals and
 the admin detail page: malformed ids give JSON `404 {"code":"not_found"}` and the admin page gives
@@ -101,9 +124,9 @@ append to `document.body`. The browser console tool returns only the evaluated v
 rendering results into the DOM is what makes them both readable and recordable.
 
 ## Devin Secrets Needed
-- `SUPABASE_ACCESS_TOKEN` — Supabase Management API token used to read staging API keys and run
-  staging SQL. No OpenAI or agent-server credential is needed for these tests; the agent-down path
-  is itself the thing under test.
+- `SUPABASE_ACCESS_TOKEN` — Supabase Management API token used to read API keys and run SQL
+  through `database/query`. No OpenAI or agent-server credential is needed for these tests; the
+  agent-down path is itself the thing under test.
 
 ## Production host notes
 
