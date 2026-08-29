@@ -3,7 +3,7 @@
 # Touches no Supabase project.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-M="${MIGRATIONS_DIR:-$HERE/../../migrations}"
+M="${MIGRATIONS_DIR:-/home/ubuntu/repos/drcc-lab-companion/supabase/migrations}"
 PG="${PG_CONTAINER:-labops-pg}"
 
 psql_file() { docker exec -i "$PG" psql -U postgres -d labops_test -v ON_ERROR_STOP=1 -q < "$1"; }
@@ -14,7 +14,10 @@ docker exec -i "$PG" psql -U postgres -v ON_ERROR_STOP=1 -q \
 for f in "$HERE/00_harness_base.sql" "$HERE/10_fixtures.sql" \
          "$M/PROPOSED_20260825000000_labops_ai_roles.sql" \
          "$M/PROPOSED_20260825010000_labops_ai_runs.sql" \
-         "$HERE/90_checks.sql"; do
+         "$HERE/90_checks.sql" \
+         "$HERE/20_support_conversation.sql" \
+         "$M/PROPOSED_20260830000000_labops_ai_phase2_broker.sql" \
+         "$HERE/91_phase2_checks.sql"; do
   echo "== $(basename "$f")"
   psql_file "$f"
 done
@@ -22,4 +25,5 @@ done
 echo "== idempotency replay"
 psql_file "$M/PROPOSED_20260825000000_labops_ai_roles.sql"
 psql_file "$M/PROPOSED_20260825010000_labops_ai_runs.sql"
+psql_file "$M/PROPOSED_20260830000000_labops_ai_phase2_broker.sql"
 echo "ALL CHECKS PASSED"

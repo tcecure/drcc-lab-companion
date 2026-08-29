@@ -26,6 +26,7 @@ describe("LabOps AI authorization", () => {
       "read_investigations",
       "start_investigation",
       "cancel_investigation",
+      "file_findings_note",
       "decide_approval",
     ] as const) {
       expect(authorize(capability, student, { ownerEmail: owner }).allowed).toBe(false);
@@ -72,5 +73,26 @@ describe("LabOps AI authorization", () => {
 
     expect(authorize("decide_approval", developer).allowed).toBe(false);
     expect(authorize("read_investigations", developer).allowed).toBe(true);
+  });
+
+  it("gives every LabOps role read access and nothing that spends or writes", () => {
+    for (const role of ["lab_admin", "developer", "support_analyst"] as const) {
+      const staff = identity({
+        userId: `user-${role}`,
+        email: `${role}@digitalrcc.com`,
+        roles: [role],
+      });
+
+      expect(authorize("read_investigations", staff, { ownerEmail: owner }).allowed).toBe(true);
+      expect(authorize("start_investigation", staff, { ownerEmail: owner }).allowed).toBe(false);
+      expect(authorize("file_findings_note", staff, { ownerEmail: owner }).allowed).toBe(false);
+    }
+  });
+
+  it("keeps filing a findings note with the pilot operator only", () => {
+    const otherAdmin = identity({ userId: "user-admin2", email: "admin2@digitalrcc.com" });
+
+    expect(authorize("file_findings_note", identity(), { ownerEmail: owner }).allowed).toBe(true);
+    expect(authorize("file_findings_note", otherAdmin, { ownerEmail: owner }).allowed).toBe(false);
   });
 });

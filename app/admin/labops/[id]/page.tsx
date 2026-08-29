@@ -7,6 +7,7 @@ import {
   ActivityStream,
   ApprovalDecision,
   CancelInvestigationButton,
+  FileFindingsNoteButton,
   ResolutionForm,
 } from "@/components/labops/actions";
 import { requireManager } from "@/lib/auth";
@@ -96,7 +97,10 @@ export default async function InvestigationPage({
           <Link className="button secondary" href="/admin/labops">
             Back to console
           </Link>
-          <Link className="button secondary" href="/admin/queue">
+          <Link
+            className="button secondary"
+            href={`/admin/support/${run.support_request_id}`}
+          >
             Source ticket: {run.support_request_id.slice(0, 8)}
           </Link>
           {active && operator.ok ? <CancelInvestigationButton runId={run.id} /> : null}
@@ -231,6 +235,16 @@ export default async function InvestigationPage({
       {operator.ok ? (
         <Card eyebrow="Outcome" title="Findings and resolution">
           <ResolutionForm findings={run.findings} resolution={run.resolution} runId={run.id} />
+          {run.findings ? (
+            <div className="mt-4 border-t border-cyan-200/10 pt-4">
+              <p className="mb-3 text-sm leading-6 text-slate-300">
+                Optional: copy these findings onto the ticket as an internal, staff-only note.
+                It is attributed to the portal, is written once per investigation, and changes
+                nothing else — status, priority and the student-facing conversation stay yours.
+              </p>
+              <FileFindingsNoteButton runId={run.id} />
+            </div>
+          ) : null}
         </Card>
       ) : run.findings || run.resolution ? (
         <Card eyebrow="Outcome" title="Findings and resolution">

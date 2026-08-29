@@ -56,6 +56,11 @@ const adminNav: NavItem[] = [
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
   { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
   {
+    href: "/admin/labops/approvals",
+    icon: ClipboardCheck,
+    label: "LabOps Approvals",
+  },
+  {
     adminOnly: true,
     href: "/admin/support",
     icon: MessageSquareText,

@@ -112,6 +112,54 @@ export function CancelInvestigationButton({ runId }: { runId: string }) {
   );
 }
 
+/**
+ * Files the reviewed findings on the source ticket as an internal note. Deliberately a
+ * separate, explicit click: the note is the only ticket write the console makes, and the
+ * gateway still refuses unless the support_notes write switch is on.
+ */
+export function FileFindingsNoteButton({ runId }: { runId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<string | null>(null);
+
+  return (
+    <div>
+      <button
+        className="button secondary"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          setOutcome(null);
+
+          try {
+            const payload = (await post(
+              `/api/labops/investigations/${runId}/findings-note`,
+            )) as { created?: boolean } | null;
+
+            setOutcome(
+              payload?.created
+                ? "Internal note added to the ticket."
+                : "This investigation was already filed on the ticket.",
+            );
+            router.refresh();
+          } catch (problem) {
+            setError(problem instanceof Error ? problem.message : "Could not file the note.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+        type="button"
+      >
+        {busy ? "Filing…" : "File findings as internal note"}
+      </button>
+      {outcome ? <p className="mt-2 text-sm text-cyan-200">{outcome}</p> : null}
+      {error ? <Problem>{error}</Problem> : null}
+    </div>
+  );
+}
+
 export function ApprovalDecision({ approvalId }: { approvalId: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

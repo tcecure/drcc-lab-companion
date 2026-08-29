@@ -14,6 +14,7 @@ const resolutionSchema = z
   .object({
     findings: z.string().max(20_000).optional(),
     resolution: z.string().max(20_000).optional(),
+    acknowledgeStaleContext: z.boolean().optional(),
   })
   .refine((value) => value.findings !== undefined || value.resolution !== undefined, {
     message: "Provide findings, a resolution, or both.",
@@ -120,13 +121,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       runId: id,
       findings: parsed.data.findings,
       resolution: parsed.data.resolution,
+      acknowledgeStaleContext: parsed.data.acknowledgeStaleContext,
     });
 
     if (!result.ok) {
-      return jsonError(404, result.reason, { code: "not_found" });
+      return result.code === "stale_context"
+        ? jsonError(409, result.reason, { code: result.code })
+        : jsonError(404, result.reason, { code: "not_found" });
     }
 
-    return NextResponse.json({ investigation: result.run });
+    return NextResponse.json({ investigation: result.run, staleContext: result.stale });
   } catch (error) {
     return failureResponse(error, "Could not record the resolution.");
   }

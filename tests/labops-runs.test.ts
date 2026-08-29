@@ -6,6 +6,7 @@ import type { LabOpsLimits, UsageSnapshot } from "@/lib/labops/budgets";
 import type { LabOpsIdentity } from "@/lib/labops/policy";
 import {
   cancelInvestigation,
+  publishReviewedFindings,
   recordResolution,
   relayInvestigation,
   startInvestigation,
@@ -109,6 +110,11 @@ type StubState = {
   messages: Array<{ role: string; content: string }>;
   toolActions: Array<{ tool: string; outcome: string }>;
   usageRows: Array<UsageSnapshot>;
+  messagesOnTicket?: Awaited<
+    ReturnType<LabOpsStore["getSupportConversation"]>
+  >["messages"];
+  writeSwitches: Record<string, boolean>;
+  findingsNotes: Array<{ runId: string; supportRequestId: string; body: string }>;
 };
 
 function stubStore(state: StubState): LabOpsStore {
@@ -118,6 +124,9 @@ function stubStore(state: StubState): LabOpsStore {
     },
     async getSupportRequest() {
       return state.request;
+    },
+    async getSupportConversation() {
+      return { messages: state.messagesOnTicket ?? [], attachments: [] };
     },
     async getPodLabel() {
       return "Pod01";
@@ -178,11 +187,26 @@ function stubStore(state: StubState): LabOpsStore {
     async listApprovals() {
       return [];
     },
+    async listPendingApprovals() {
+      return [];
+    },
     async getApproval() {
       return null;
     },
     async decideApproval() {
       throw new Error("not used");
+    },
+    async isWriteEnabled(scope) {
+      return state.writeSwitches[scope] === true;
+    },
+    async publishFindingsNote(input) {
+      if (state.findingsNotes.some((note) => note.runId === input.runId)) {
+        return { created: false };
+      }
+
+      state.findingsNotes.push(input);
+
+      return { created: true };
     },
     async recordIntegrationHealth() {},
   };
@@ -233,6 +257,8 @@ beforeEach(() => {
     messages: [],
     toolActions: [],
     usageRows: [],
+    writeSwitches: {},
+    findingsNotes: [],
   };
 });
 
@@ -582,5 +608,103 @@ describe("recording a resolution", () => {
     await recordResolution(deps(state), { runId: "run-1", findings: "Superseded" });
 
     expect(state.statusUpdates.at(-1)?.status).toBe("cancelled");
+  });
+
+  it("refuses to conclude when the student replied after the investigation read the ticket", async () => {
+    state.request = { ...supportRequest(), last_message_at: "2026-08-25T09:00:00.000Z" };
+    state.run = runRow({
+      status: "running",
+      sanitized_context: {
+        freshness: {
+          lastMessageAt: "2026-08-25T08:00:00.000Z",
+          includedMessageIds: ["msg-1"],
+        },
+      },
+    });
+
+    const result = await recordResolution(deps(state), {
+      runId: "run-1",
+      findings: "Answer based on the older ticket text",
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "stale_context" });
+    expect(state.statusUpdates).toHaveLength(0);
+  });
+
+  it("concludes anyway when the operator acknowledges the newer replies", async () => {
+    state.request = { ...supportRequest(), last_message_at: "2026-08-25T09:00:00.000Z" };
+    state.run = runRow({
+      status: "running",
+      sanitized_context: {
+        freshness: {
+          lastMessageAt: "2026-08-25T08:00:00.000Z",
+          includedMessageIds: ["msg-1"],
+        },
+      },
+    });
+
+    const result = await recordResolution(deps(state), {
+      runId: "run-1",
+      findings: "Still valid",
+      acknowledgeStaleContext: true,
+    });
+
+    expect(result).toMatchObject({ ok: true, stale: true });
+    expect(state.statusUpdates.at(-1)?.status).toBe("succeeded");
+  });
+});
+
+describe("filing findings on the ticket", () => {
+  it("refuses while the support_notes write switch is off", async () => {
+    state.run = runRow({ status: "succeeded", findings: "LAN rule ordering" });
+
+    const result = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "writes_disabled" });
+    expect(state.findingsNotes).toHaveLength(0);
+  });
+
+  it("refuses when the investigation produced no findings", async () => {
+    state.writeSwitches.support_notes = true;
+    state.run = runRow({ status: "succeeded", findings: "   " });
+
+    const result = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "no_findings" });
+    expect(state.findingsNotes).toHaveLength(0);
+  });
+
+  it("writes one internal note and never touches the ticket status", async () => {
+    state.writeSwitches.support_notes = true;
+    state.run = runRow({
+      status: "succeeded",
+      findings: "Pod01 LAN default deny sits above the DMZ rules.",
+      resolution: "Move the deny to the bottom of the LAN tab.",
+    });
+
+    const first = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+    const second = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+
+    expect(first).toEqual({ ok: true, created: true });
+    expect(second).toEqual({ ok: true, created: false });
+    expect(state.findingsNotes).toHaveLength(1);
+    expect(state.findingsNotes[0]?.body).toContain("[labops-run:run-1]");
+    expect(state.statusUpdates).toHaveLength(0);
+    expect(state.toolActions.map((action) => action.outcome)).toEqual([
+      "succeeded",
+      "denied",
+    ]);
   });
 });

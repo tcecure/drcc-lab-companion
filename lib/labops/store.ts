@@ -14,6 +14,10 @@ import "server-only";
 
 import type { AgentActivityEvent, AgentRunStatus } from "@/lib/labops/agent-protocol";
 import { addUsage, zeroUsage, type UsageSnapshot } from "@/lib/labops/budgets";
+import type {
+  ConversationAttachmentMeta,
+  SupportMessageRow,
+} from "@/lib/labops/conversation";
 import type { InvestigationBrief, SupportRequestRow } from "@/lib/labops/intake";
 import { redactText } from "@/lib/labops/redact";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -66,6 +70,11 @@ export type RunSummary = {
 export type LabOpsStore = {
   listEligibleSupportRequests(limit?: number): Promise<SupportRequestRow[]>;
   getSupportRequest(id: string): Promise<SupportRequestRow | null>;
+  /** Non-internal conversation plus attachment metadata; internal notes never leave. */
+  getSupportConversation(supportRequestId: string): Promise<{
+    messages: SupportMessageRow[];
+    attachments: ConversationAttachmentMeta[];
+  }>;
   getPodLabel(labAssignmentId: string | null): Promise<string | null>;
   countActiveRuns(): Promise<number>;
   monthToDateCostUsd(now?: Date): Promise<number>;
@@ -110,11 +119,28 @@ export type LabOpsStore = {
   }): Promise<void>;
   recordUsage(runId: string, provider: string, model: string, usage: UsageSnapshot): Promise<void>;
   listApprovals(runId: string): Promise<ApprovalRow[]>;
+  /** Pending approvals across every investigation, for the LabOps approvals page. */
+  listPendingApprovals(limit?: number): Promise<Array<ApprovalRow & { runTitle: string }>>;
   getApproval(approvalId: string): Promise<ApprovalRow | null>;
   decideApproval(
     approvalId: string,
     decision: { status: "approved" | "rejected"; decidedBy: string; note?: string | null },
   ): Promise<ApprovalRow>;
+  /**
+   * Whether a Phase 2 write path is enabled. Defaults to false, including when the
+   * switch table does not exist yet, so an unmigrated database means "no writes".
+   */
+  isWriteEnabled(scope: string): Promise<boolean>;
+  /**
+   * Adds the reviewed findings as an internal system note on the ticket. Idempotent: a
+   * second call for the same run is a no-op. Never touches status, priority or a
+   * student-visible message.
+   */
+  publishFindingsNote(input: {
+    runId: string;
+    supportRequestId: string;
+    body: string;
+  }): Promise<{ created: boolean }>;
   recordIntegrationHealth(
     integration: string,
     status: Database["public"]["Tables"]["ai_integration_health"]["Row"]["status"],
@@ -181,6 +207,47 @@ export function createLabOpsStore(
       return data ?? null;
     },
 
+    /**
+     * Ordered non-internal messages plus attachment metadata. `is_internal` is filtered in
+     * the query and again during intake, so a staff note cannot reach the model even if this
+     * query is changed later.
+     */
+    async getSupportConversation(supportRequestId) {
+      const { data: messages, error } = await client
+        .from("support_messages")
+        .select("*")
+        .eq("support_request_id", supportRequestId)
+        .eq("is_internal", false)
+        .order("created_at", { ascending: true })
+        .limit(200);
+
+      if (error) {
+        throw new Error(`Could not read the ticket conversation: ${error.message}`);
+      }
+
+      const messageIds = (messages ?? []).map((message) => message.id);
+
+      if (messageIds.length === 0) {
+        return { messages: [], attachments: [] };
+      }
+
+      // Metadata only: storage paths and signed URLs are never copied into a brief.
+      const { data: attachments } = await client
+        .from("support_attachments")
+        .select("support_message_id, file_name, mime_type, size_bytes")
+        .in("support_message_id", messageIds);
+
+      return {
+        messages: messages ?? [],
+        attachments: (attachments ?? []).map((attachment) => ({
+          messageId: attachment.support_message_id,
+          fileName: attachment.file_name,
+          mimeType: attachment.mime_type,
+          sizeBytes: attachment.size_bytes,
+        })),
+      };
+    },
+
     /** Pod name only. The student's identity is deliberately never resolved here. */
     async getPodLabel(labAssignmentId) {
       if (!labAssignmentId) {
@@ -241,6 +308,16 @@ export function createLabOpsStore(
             subject: input.brief.subject,
             description: input.brief.description,
             attachments: input.brief.attachmentSummary,
+            conversation: input.brief.conversation
+              ? {
+                  entries: input.brief.conversation.entries,
+                  internalExcluded: input.brief.conversation.internalExcluded,
+                  droppedForBounds: input.brief.conversation.droppedForBounds,
+                  deduplicatedDescription:
+                    input.brief.conversation.deduplicatedDescription,
+                }
+              : null,
+            freshness: input.brief.freshness,
             provenance: input.brief.provenance,
           } as unknown as Json,
           model: input.model,
@@ -500,6 +577,31 @@ export function createLabOpsStore(
       return data ?? [];
     },
 
+    /**
+     * Pending approvals with only the investigation title alongside them. Approvers see the
+     * sanitized action, never the support queue or the requester's identity.
+     */
+    async listPendingApprovals(limit = 50) {
+      const { data, error } = await client
+        .from("ai_approval_requests")
+        .select("*, ai_runs(title)")
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(limit);
+
+      if (error) {
+        throw new Error(`Could not read approval requests: ${error.message}`);
+      }
+
+      return (data ?? []).map((row) => {
+        const { ai_runs: run, ...approval } = row as ApprovalRow & {
+          ai_runs: { title: string } | null;
+        };
+
+        return { ...approval, runTitle: run?.title ?? "Investigation" };
+      });
+    },
+
     async getApproval(approvalId) {
       const { data, error } = await client
         .from("ai_approval_requests")
@@ -541,6 +643,71 @@ export function createLabOpsStore(
       }
 
       return data;
+    },
+
+    async isWriteEnabled(scope) {
+      const { data, error } = await client
+        .from("ai_write_switches")
+        .select("scope, enabled")
+        .in("scope", ["global", scope]);
+
+      // The switch table arrives with the Phase 2 migration. Until then — and if the
+      // read fails for any other reason — the answer is "not enabled".
+      if (error || !data || data.length < 2) {
+        return false;
+      }
+
+      return data.every((row) => row.enabled);
+    },
+
+    async publishFindingsNote({ runId, supportRequestId, body }) {
+      const { data: existing } = await client
+        .from("ai_findings_notes")
+        .select("run_id")
+        .eq("run_id", runId)
+        .maybeSingle();
+
+      if (existing) {
+        return { created: false };
+      }
+
+      const { data: message, error: messageError } = await client
+        .from("support_messages")
+        .insert({
+          support_request_id: supportRequestId,
+          author_user_id: null,
+          author_role: "system",
+          body,
+          is_internal: true,
+        })
+        .select("id")
+        .single();
+
+      if (messageError || !message) {
+        throw new Error(
+          `Could not add the internal findings note: ${messageError?.message ?? "unknown error"}`,
+        );
+      }
+
+      const { error: linkError } = await client.from("ai_findings_notes").insert({
+        run_id: runId,
+        support_request_id: supportRequestId,
+        support_message_id: message.id,
+      });
+
+      // A racing request already linked this run: the note it wrote is the one that
+      // counts, so remove the duplicate this call created.
+      if (linkError) {
+        await client.from("support_messages").delete().eq("id", message.id);
+
+        if (linkError.code === "23505" || linkError.code === "23514") {
+          return { created: false };
+        }
+
+        throw new Error(`Could not link the findings note: ${linkError.message}`);
+      }
+
+      return { created: true };
     },
 
     async recordIntegrationHealth(integration, status, detail = null) {

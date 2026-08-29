@@ -5,6 +5,7 @@ import { ArrowLeft, LockKeyhole, Send } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/card";
 import { SubmitButton } from "@/components/forms";
+import { StartInvestigationButton } from "@/components/labops/actions";
 import {
   SupportConversation,
   SupportStatusBadge,
@@ -16,6 +17,9 @@ import {
 } from "@/lib/actions/support-tickets";
 import { requireAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
+import { authorizeLabOpsRequest } from "@/lib/labops/authz";
+import { isLabOpsConfigured } from "@/lib/labops/config";
+import { evaluateEligibility } from "@/lib/labops/intake";
 import { getSupportConversation } from "@/lib/support-data";
 import {
   getSupportCategoryLabel,
@@ -49,7 +53,7 @@ export default async function AdminTicketPage({
     notFound();
   }
 
-  const [messages, { data: assignedProfile }] = await Promise.all([
+  const [messages, { data: assignedProfile }, operator] = await Promise.all([
     getSupportConversation(ticket.id, true),
     ticket.assigned_to
       ? supabase
@@ -58,7 +62,9 @@ export default async function AdminTicketPage({
           .eq("id", ticket.assigned_to)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    authorizeLabOpsRequest("start_investigation"),
   ]);
+  const eligibility = evaluateEligibility(ticket);
 
   return (
     <AppShell roles={roles} title={getTicketCode(ticket.id)}>
@@ -112,6 +118,23 @@ export default async function AdminTicketPage({
           </dd>
         </dl>
       </section>
+
+      {operator.ok && isLabOpsConfigured() ? (
+        <Card eyebrow="LabOps AI" title="Investigate this ticket">
+          <p className="text-sm leading-6 text-slate-300">
+            The investigation reads this ticket and the student-visible conversation only —
+            internal notes, names and email addresses stay in the portal. It cannot change the
+            ticket, reply to the student, or touch a pod; findings come back for your review.
+          </p>
+          <div className="mt-4">
+            <StartInvestigationButton
+              disabled={!eligibility.eligible}
+              disabledReason={eligibility.eligible ? null : eligibility.reason}
+              supportRequestId={ticket.id}
+            />
+          </div>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.8fr)] xl:items-start">
         <Card eyebrow="Conversation" title="Ticket history">

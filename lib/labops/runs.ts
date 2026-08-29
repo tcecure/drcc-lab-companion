@@ -8,7 +8,9 @@
  *
  * Invariants:
  * - only sanitized briefs are sent to the agent, never raw ticket text;
- * - the support_requests row is never written here; findings live on the investigation;
+ * - the support_requests row is never written here; findings live on the investigation,
+ *   and the only ticket write is the reviewed internal findings note, which a human asks
+ *   for explicitly and which never changes status, priority or a student-visible message;
  * - a failure always leaves the run in a terminal state, so the single active slot frees;
  * - nothing returned to a caller contains the agent URL, the agent key or the model key.
  */
@@ -21,6 +23,11 @@ import {
   type CreateConversationInput,
 } from "@/lib/labops/agent-protocol";
 import { AgentServerError, workspaceDirForRun } from "@/lib/labops/agent";
+import {
+  isContextStale,
+  type ContextFreshness,
+} from "@/lib/labops/conversation";
+import { buildFindingsNote } from "@/lib/labops/findings-note";
 import {
   canStartRun,
   evaluateRunBudget,
@@ -135,8 +142,15 @@ export async function startInvestigation(
     return { ok: false, code: "limit_reached", reason: startDecision.reason };
   }
 
-  const podLabel = await deps.store.getPodLabel(request.lab_assignment_id);
-  const brief = buildInvestigationBrief(request, { podLabel });
+  const [podLabel, conversation] = await Promise.all([
+    deps.store.getPodLabel(request.lab_assignment_id),
+    deps.store.getSupportConversation(request.id),
+  ]);
+  const brief = buildInvestigationBrief(request, {
+    podLabel,
+    messages: conversation.messages,
+    messageAttachments: conversation.attachments,
+  });
   const run = await deps.store.createRun({
     supportRequestId: request.id,
     requestedBy: input.identity.userId,
@@ -433,12 +447,37 @@ async function persistUsage(deps: RunDeps, run: RunRow, cumulative: UsageSnapsho
  */
 export async function recordResolution(
   deps: RunDeps,
-  input: { runId: string; findings?: string | null; resolution?: string | null },
-): Promise<{ ok: true; run: RunSummary } | { ok: false; reason: string }> {
+  input: {
+    runId: string;
+    findings?: string | null;
+    resolution?: string | null;
+    /** Set once the operator has read the newer replies and still wants to conclude. */
+    acknowledgeStaleContext?: boolean;
+  },
+): Promise<
+  | { ok: true; run: RunSummary; stale: boolean }
+  | { ok: false; code: "run_not_found" | "stale_context"; reason: string }
+> {
   const run = await deps.store.getRun(input.runId);
 
   if (!run) {
-    return { ok: false, reason: "That investigation does not exist." };
+    return {
+      ok: false,
+      code: "run_not_found",
+      reason: "That investigation does not exist.",
+    };
+  }
+
+  const stale = await isRunContextStale(deps, run);
+
+  if (stale && !input.acknowledgeStaleContext) {
+    return {
+      ok: false,
+      code: "stale_context",
+      reason:
+        "The ticket has new replies the investigation never read. Review them, then either" +
+        " confirm this conclusion or start a new investigation.",
+    };
   }
 
   const status: RunStatus = isActiveStatus(run.status) ? "succeeded" : run.status;
@@ -450,5 +489,110 @@ export async function recordResolution(
 
   const updated = await deps.store.getRun(run.id);
 
-  return { ok: true, run: summarizeRun(updated ?? run, await deps.store.runUsage(run.id)) };
+  return {
+    ok: true,
+    run: summarizeRun(updated ?? run, await deps.store.runUsage(run.id)),
+    stale,
+  };
+}
+
+/**
+ * Adds the reviewed findings to the ticket as an internal system note.
+ *
+ * Only reachable when a human asks for it: nothing in the agent path calls this. The
+ * `support_notes` write switch (disabled by default, and treated as disabled while the
+ * Phase 2 migration is unapplied) is the second gate, and the run id marker makes the
+ * write idempotent.
+ */
+export async function publishReviewedFindings(
+  deps: RunDeps,
+  input: { runId: string; actorUserId: string },
+): Promise<
+  | { ok: true; created: boolean }
+  | {
+      ok: false;
+      code: "run_not_found" | "no_findings" | "writes_disabled";
+      reason: string;
+    }
+> {
+  const run = await deps.store.getRun(input.runId);
+
+  if (!run) {
+    return { ok: false, code: "run_not_found", reason: "That investigation does not exist." };
+  }
+
+  if (!run.findings?.trim()) {
+    return {
+      ok: false,
+      code: "no_findings",
+      reason: "This investigation has no findings to file yet.",
+    };
+  }
+
+  if (!(await deps.store.isWriteEnabled("support_notes"))) {
+    return {
+      ok: false,
+      code: "writes_disabled",
+      reason: "Writing notes back to tickets is disabled. Enable the support_notes switch first.",
+    };
+  }
+
+  const note = buildFindingsNote({
+    runId: run.id,
+    findings: run.findings,
+    resolution: run.resolution,
+    model: run.model,
+  });
+
+  const { created } = await deps.store.publishFindingsNote({
+    runId: run.id,
+    supportRequestId: run.support_request_id,
+    body: note.body,
+  });
+
+  await deps.store.recordToolAction({
+    runId: run.id,
+    tool: "support.internal_note",
+    target: run.support_request_id,
+    isWrite: true,
+    outcome: created ? "succeeded" : "denied",
+    request: { actorUserId: input.actorUserId, reviewed: true },
+    responseSummary: created
+      ? "Internal findings note added to the ticket."
+      : "A findings note for this investigation already exists.",
+  });
+
+  return { ok: true, created };
+}
+
+/**
+ * True when the ticket moved on after the run captured its context: a new student reply, or
+ * a message inside the captured window the run never read. Runs started before freshness
+ * was recorded have no captured state and are treated as current.
+ */
+export async function isRunContextStale(deps: RunDeps, run: RunRow) {
+  const captured = (run.sanitized_context as { freshness?: ContextFreshness } | null)
+    ?.freshness;
+
+  if (!captured?.lastMessageAt) {
+    return false;
+  }
+
+  const request = await deps.store.getSupportRequest(run.support_request_id);
+
+  if (!request) {
+    return false;
+  }
+
+  const { messages } = await deps.store.getSupportConversation(run.support_request_id);
+  // Compare the newest slice of the same size the run read, so messages it deliberately
+  // dropped for its size bound are not mistaken for new activity.
+  const recentMessageIds = messages
+    .slice(-Math.max(1, captured.includedMessageIds.length))
+    .map((message) => message.id);
+
+  return isContextStale(captured, {
+    lastMessageAt: request.last_message_at,
+    recentMessageIds,
+  });
 }

@@ -1715,6 +1715,84 @@ export type Database = {
           },
         ];
       };
+      // Phase 2 tables. Created by PROPOSED_20260830000000_labops_ai_phase2_broker.sql,
+      // which is not applied yet: reads are written to treat "missing table" as
+      // "write disabled", so the app is safe against an unmigrated database.
+      ai_write_switches: {
+        Row: {
+          scope: string;
+          enabled: boolean;
+          reason: string | null;
+          updated_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          scope: string;
+          enabled?: boolean;
+          reason?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          enabled?: boolean;
+          reason?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      ai_findings_notes: {
+        Row: {
+          run_id: string;
+          support_request_id: string;
+          support_message_id: string;
+          created_at: string;
+        };
+        Insert: {
+          run_id: string;
+          support_request_id: string;
+          support_message_id: string;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "ai_findings_notes_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: true;
+            referencedRelation: "ai_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ai_run_workspaces: {
+        Row: {
+          run_id: string;
+          container_name: string;
+          image_digest: string;
+          volume_name: string;
+          created_at: string;
+          destroyed_at: string | null;
+          disposition: "destroyed" | "archived" | null;
+        };
+        Insert: {
+          run_id: string;
+          container_name: string;
+          image_digest: string;
+          volume_name: string;
+        };
+        Update: {
+          destroyed_at?: string | null;
+          disposition?: "destroyed" | "archived" | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ai_run_workspaces_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: true;
+            referencedRelation: "ai_runs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       ai_model_usage: {
         Row: {
           id: number;
