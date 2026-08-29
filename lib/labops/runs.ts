@@ -132,29 +132,41 @@ async function agentForRun(deps: RunDeps, run: Pick<RunRow, "id">): Promise<Agen
  * Destroys a run's container and volume and records the disposition. Never throws: a
  * workspace that resists cleanup must not stop the run reaching a terminal state, so the
  * failure is audited and the periodic sweep retries it.
+ *
+ * `audit` is off for containers with no investigation behind them: the audit tables are
+ * keyed to a run, so writing there would fail and abandon the cleanup.
  */
-async function destroyWorkspace(deps: RunDeps, runId: string) {
+async function destroyWorkspace(deps: RunDeps, runId: string, audit = true) {
   if (!deps.runtime) {
     return;
   }
 
+  const record = async (outcome: "succeeded" | "failed", responseSummary: string) => {
+    if (!audit) {
+      return;
+    }
+
+    await deps.store.recordToolAction({
+      runId,
+      tool: "runtime.workspace.destroy",
+      outcome,
+      responseSummary,
+    });
+  };
+
   try {
     await deps.runtime.destroy(runId);
-    await deps.store.markWorkspaceDestroyed(runId);
-    await deps.store.recordToolAction({
-      runId,
-      tool: "runtime.workspace.destroy",
-      outcome: "succeeded",
-      responseSummary: "Investigation container and volume removed.",
-    });
+
+    if (audit) {
+      await deps.store.markWorkspaceDestroyed(runId);
+    }
+
+    await record("succeeded", "Investigation container and volume removed.");
   } catch (error) {
-    await deps.store.recordToolAction({
-      runId,
-      tool: "runtime.workspace.destroy",
-      outcome: "failed",
-      responseSummary:
-        error instanceof Error ? error.message : "Workspace cleanup failed.",
-    });
+    await record(
+      "failed",
+      error instanceof Error ? error.message : "Workspace cleanup failed.",
+    );
   }
 }
 
@@ -651,7 +663,9 @@ async function reapOrphanWorkspaces(deps: RunDeps, alreadyEnded: Set<string>) {
       continue;
     }
 
-    await destroyWorkspace(deps, runId);
+    const known = alreadyEnded.has(runId) || Boolean(await deps.store.getRun(runId));
+
+    await destroyWorkspace(deps, runId, known);
     reaped.push(runId);
   }
 

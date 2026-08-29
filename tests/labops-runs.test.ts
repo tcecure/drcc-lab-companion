@@ -1012,6 +1012,10 @@ describe("per-investigation containers", () => {
 
     expect(outcome.reapedWorkspaces).toEqual(["run-orphan"]);
     expect(runtime.live.size).toBe(0);
+    // The audit tables are keyed to a run, so a container with none must not be recorded:
+    // the insert would fail and abandon the cleanup.
+    expect(state.toolActions).toEqual([]);
+    expect(state.destroyedWorkspaceRows).toEqual([]);
   });
 
   it("ends a run that outlives its wall-clock limit with nobody watching the relay", async () => {
