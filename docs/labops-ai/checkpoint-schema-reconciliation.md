@@ -3,6 +3,11 @@
 Read-only comparison of the two Supabase projects, taken before any Phase 2 migration is
 written. Nothing was applied to either database to produce this document.
 
+> **Superseded in one respect.** The owner has confirmed there is no staging environment, so
+> the "apply to staging first" step below no longer exists. The Phase 2 broker migration was
+> validated on an isolated Postgres and applied straight to production; see
+> [phase2-apply-log.md](./phase2-apply-log.md).
+
 | Project | Ref | Public tables |
 | --- | --- | --- |
 | DRCC (production) | `kkacbtkacadgsnbylkti` | 44 |

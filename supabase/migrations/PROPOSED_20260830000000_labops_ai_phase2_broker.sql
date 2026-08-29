@@ -1,15 +1,16 @@
--- PROPOSED — NOT APPLIED. See docs/labops-ai/checkpoint-schema-reconciliation.md
--- and platform/labops-ai/docs/phase2/11-approval-broker.md in crc-awx-labops.
+-- APPLIED to DRCC production (kkacbtkacadgsnbylkti) on 2026-08-29 with owner approval.
+-- The PROPOSED_ prefix stays so a migration runner does not replay it out of band, the same
+-- convention the Phase 1 labops_ai files follow. See docs/labops-ai/phase2-apply-log.md and
+-- platform/labops-ai/docs/phase2/11-approval-broker.md in crc-awx-labops.
 --
 -- Phase 2 approval/execution broker storage. Strictly additive:
 --   * no column is dropped, renamed or retyped;
 --   * every added column is nullable or has a default, so existing rows stay valid;
 --   * no existing policy is widened; the new write flags default to "disabled".
 --
--- Order of application: isolated database → staging → (separate approval) production.
--- Staging must first receive 20260828000000_support_ticket_portal.sql, which it is
--- missing; without it support_messages / support_attachments / integration_events /
--- audit_events do not exist there.
+-- There is no staging deployment, so this was validated against a throwaway local Postgres
+-- (supabase/tests/labops/run.sh) and the behavioural checks were then replayed against
+-- production inside a transaction that rolls back — see docs/labops-ai/phase2-apply-log.md.
 
 -- ---------------------------------------------------------------------------
 -- 1. Approval requests learn about risk, immutability and execution
@@ -165,8 +166,7 @@ comment on table public.ai_run_workspaces is
 
 -- The application marks the note with [labops-run:<run id>] and checks before inserting.
 -- This index makes a duplicate impossible even if two requests race. It is created only
--- when the ticket conversation exists, which is production today (staging after
--- 20260828000000 is applied).
+-- when the ticket conversation exists, which it does in production.
 do $$ begin
   if exists (
     select 1 from information_schema.tables
