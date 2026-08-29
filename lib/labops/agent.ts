@@ -1,11 +1,16 @@
 import "server-only";
 
 /**
- * Transport for the private OpenHands Agent Server on drcc-labops-01.
+ * Transport for a private OpenHands Agent Server on drcc-labops-01.
+ *
+ * Since Phase 2 there is no shared agent: one container is launched per investigation
+ * (lib/labops/workspace.ts) and a client is built for that container's address, which
+ * exists only while the run does.
  *
  * Invariants this module exists to keep:
- * - the agent server is reachable only from the gateway process (loopback), so its URL
- *   and bearer key stay server-side and are never returned by an API route;
+ * - the agent server is reachable only from the gateway process, over the internal
+ *   labops-model bridge, so its URL and key stay server-side and are never returned by an
+ *   API route;
  * - the browser never speaks to the agent server: activity reaches the UI only as
  *   normalised, redacted events relayed by the gateway;
  * - only the endpoints in agentRoutes are called — the stock OpenHands UI and the
@@ -76,7 +81,11 @@ type RequestOptions = {
 const defaultSleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Per-investigation workspace, so no two runs can see each other's files. */
+/**
+ * Per-investigation workspace path *inside* the run's own container. The isolation comes
+ * from the container and its private volume, not from this path; the run id is kept so a
+ * workspace found on disk can still be attributed to a run.
+ */
 export function workspaceDirForRun(runId: string) {
   const safe = runId.replace(/[^a-zA-Z0-9_-]/g, "");
 
@@ -231,6 +240,37 @@ export class AgentClient {
    * gateway's key is wrong, which would report a healthy agent right up to the first start.
    * Never exposes the agent URL to callers.
    */
+  /**
+   * Waits for a freshly launched agent server to accept authenticated calls. A container
+   * that never becomes ready fails the run instead of leaving it queued.
+   */
+  async waitUntilReady(options: {
+    timeoutMs: number;
+    pollIntervalMs?: number;
+    now?: () => number;
+  }): Promise<void> {
+    const now = options.now ?? Date.now;
+    const deadline = now() + options.timeoutMs;
+    const pollIntervalMs = options.pollIntervalMs ?? 1_000;
+
+    for (;;) {
+      if ((await this.health()).ok) {
+        return;
+      }
+
+      if (now() >= deadline) {
+        throw new AgentServerError(
+          "unavailable",
+          `The investigation workspace did not become ready within ${Math.round(
+            options.timeoutMs / 1_000,
+          )}s`,
+        );
+      }
+
+      await this.sleep(pollIntervalMs);
+    }
+  }
+
   async health(): Promise<{ ok: boolean }> {
     try {
       await this.request<unknown>(agentRoutes.health, {
@@ -433,9 +473,27 @@ export class AgentClient {
   }
 }
 
+/**
+ * Client for one investigation's own container, addressed as `ip:port` on the internal
+ * labops-model network. The gateway's agent key authenticates every container, because
+ * every container is started from the same agent.env.
+ */
+export function agentClientForEndpoint(
+  endpoint: string,
+  config: LabOpsConfig = readLabOpsConfig(),
+) {
+  return new AgentClient({
+    config,
+    baseUrl: endpoint.startsWith("http") ? endpoint : `http://${endpoint}`,
+  });
+}
+
 let cached: AgentClient | null = null;
 
-/** Process-wide client built from server-side configuration. */
+/**
+ * Client for the shared Phase 1 agent server. Only usable under
+ * LABOPS_RUNTIME_MODE=shared; per-run isolation has no fixed agent to point at.
+ */
 export function agentClient() {
   if (!cached) {
     cached = new AgentClient({ config: readLabOpsConfig() });

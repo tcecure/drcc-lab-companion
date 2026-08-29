@@ -88,6 +88,22 @@ export type LabOpsStore = {
   ): Promise<void>;
   getRun(runId: string): Promise<RunRow | null>;
   listRuns(limit?: number): Promise<RunRow[]>;
+  /** Runs the database still considers in flight, oldest first. */
+  listActiveRuns(): Promise<RunRow[]>;
+  /**
+   * Records the container and volume an investigation was given, so a workspace found on
+   * the host after a restart can be attributed to a run and reaped.
+   */
+  recordWorkspace(input: {
+    runId: string;
+    containerName: string;
+    imageDigest: string;
+    volumeName: string;
+  }): Promise<void>;
+  markWorkspaceDestroyed(
+    runId: string,
+    disposition?: "destroyed" | "archived",
+  ): Promise<void>;
   runUsage(runId: string): Promise<UsageSnapshot>;
   nextEventSeq(runId: string): Promise<number>;
   listEvents(
@@ -406,6 +422,53 @@ export function createLabOpsStore(
       }
 
       return data ?? [];
+    },
+
+    async listActiveRuns() {
+      const { data, error } = await client
+        .from("ai_runs")
+        .select("*")
+        .in("status", activeRunStatuses)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        throw new Error(`Could not read active investigations: ${error.message}`);
+      }
+
+      return data ?? [];
+    },
+
+    async recordWorkspace({ runId, containerName, imageDigest, volumeName }) {
+      const { error } = await client.from("ai_run_workspaces").upsert(
+        {
+          run_id: runId,
+          container_name: containerName,
+          image_digest: imageDigest,
+          volume_name: volumeName,
+        },
+        { onConflict: "run_id" },
+      );
+
+      if (error) {
+        throw new Error(`Could not record the investigation workspace: ${error.message}`);
+      }
+    },
+
+    /**
+     * Destruction is recorded even when the row is missing (a workspace created before
+     * this table existed, or reaped as an orphan), so the absence of a row never blocks
+     * cleanup.
+     */
+    async markWorkspaceDestroyed(runId, disposition = "destroyed") {
+      const { error } = await client
+        .from("ai_run_workspaces")
+        .update({ destroyed_at: new Date().toISOString(), disposition })
+        .eq("run_id", runId)
+        .is("destroyed_at", null);
+
+      if (error) {
+        throw new Error(`Could not record workspace destruction: ${error.message}`);
+      }
     },
 
     async runUsage(runId) {

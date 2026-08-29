@@ -12,7 +12,10 @@
  *   and the only ticket write is the reviewed internal findings note, which a human asks
  *   for explicitly and which never changes status, priority or a student-visible message;
  * - a failure always leaves the run in a terminal state, so the single active slot frees;
- * - nothing returned to a caller contains the agent URL, the agent key or the model key.
+ * - nothing returned to a caller contains the agent URL, the agent key or the model key;
+ * - an investigation gets its own container and volume, addressed at run time, and that
+ *   workspace is destroyed on every exit — success, cancellation, failure, budget stop and
+ *   gateway restart — so no run's files or processes outlive it.
  */
 
 import {
@@ -41,6 +44,7 @@ import {
   type SupportRequestRow,
 } from "@/lib/labops/intake";
 import type { LabOpsIdentity } from "@/lib/labops/policy";
+import type { WorkspaceHandle, WorkspaceRuntime } from "@/lib/labops/workspace";
 import {
   isActiveStatus,
   summarizeRun,
@@ -77,16 +81,82 @@ export type AgentPort = {
     | { type: "deadline"; snapshot: ConversationSnapshot }
   >;
   health(): Promise<{ ok: boolean }>;
+  /** Present on real clients: waits for a just-launched container to accept calls. */
+  waitUntilReady?(options: { timeoutMs: number }): Promise<void>;
 };
 
 export type RunDeps = {
   store: LabOpsStore;
+  /**
+   * Fallback agent. Under per-run isolation it is only used for the health probe, since
+   * every investigation has its own container; under LABOPS_RUNTIME_MODE=shared it is the
+   * agent for every run.
+   */
   agent: AgentPort;
   limits: LabOpsLimits;
   provider: string;
   model: string;
   now?: () => number;
+  /** Per-investigation container runtime. Absent means the shared Phase 1 topology. */
+  runtime?: WorkspaceRuntime;
+  /** Builds a client for one investigation's container address. */
+  agentFor?: (handle: WorkspaceHandle) => AgentPort;
+  /** Model settings for a run: the proxy address and its per-run path, never a provider key. */
+  llmFor?: (runId: string) => CreateConversationInput["llm"];
+  readyTimeoutMs?: number;
 };
+
+/**
+ * The agent for a run. Resolved on every call rather than configured, because a run's
+ * container is created when it starts and destroyed when it ends: a stale address would
+ * otherwise let one investigation's traffic reach another's container.
+ */
+async function agentForRun(deps: RunDeps, run: Pick<RunRow, "id">): Promise<AgentPort> {
+  if (!deps.runtime || !deps.agentFor) {
+    return deps.agent;
+  }
+
+  const handle = await deps.runtime.inspect(run.id);
+
+  if (!handle || !handle.running) {
+    throw new AgentServerError(
+      "unavailable",
+      "This investigation's workspace is no longer running, so it cannot be reached.",
+    );
+  }
+
+  return deps.agentFor(handle);
+}
+
+/**
+ * Destroys a run's container and volume and records the disposition. Never throws: a
+ * workspace that resists cleanup must not stop the run reaching a terminal state, so the
+ * failure is audited and the periodic sweep retries it.
+ */
+async function destroyWorkspace(deps: RunDeps, runId: string) {
+  if (!deps.runtime) {
+    return;
+  }
+
+  try {
+    await deps.runtime.destroy(runId);
+    await deps.store.markWorkspaceDestroyed(runId);
+    await deps.store.recordToolAction({
+      runId,
+      tool: "runtime.workspace.destroy",
+      outcome: "succeeded",
+      responseSummary: "Investigation container and volume removed.",
+    });
+  } catch (error) {
+    await deps.store.recordToolAction({
+      runId,
+      tool: "runtime.workspace.destroy",
+      outcome: "failed",
+      responseSummary:
+        error instanceof Error ? error.message : "Workspace cleanup failed.",
+    });
+  }
+}
 
 export type StartFailureCode =
   | "request_not_found"
@@ -163,16 +233,18 @@ export async function startInvestigation(
   });
 
   try {
-    const conversation = await deps.agent.createConversation({
+    const agent = await launchWorkspace(deps, run);
+    const conversation = await agent.createConversation({
       workingDir: workspaceDirForRun(run.id),
       initialMessage: brief.prompt,
       title: run.title,
       tags: { runid: run.id, supportrequestid: request.id },
+      llm: deps.llmFor?.(run.id),
     });
 
     await deps.store.attachConversation(run.id, conversation.id);
     await deps.store.appendMessage(run.id, "user", brief.prompt);
-    await deps.agent.run(conversation.id);
+    await agent.run(conversation.id);
     await deps.store.markRunStarted(run.id);
     await deps.store.recordToolAction({
       runId: run.id,
@@ -190,6 +262,38 @@ export async function startInvestigation(
 
     return { ok: false, code: "agent_unavailable", reason: failure.reason };
   }
+}
+
+/**
+ * Gives the run its own container, records it, and waits for the agent inside to answer.
+ * Under the shared topology there is nothing to launch.
+ */
+async function launchWorkspace(deps: RunDeps, run: RunRow): Promise<AgentPort> {
+  if (!deps.runtime || !deps.agentFor) {
+    return deps.agent;
+  }
+
+  const handle = await deps.runtime.start(run.id);
+
+  await deps.store.recordWorkspace({
+    runId: run.id,
+    containerName: handle.containerName,
+    imageDigest: handle.imageDigest,
+    volumeName: handle.volumeName,
+  });
+  await deps.store.recordToolAction({
+    runId: run.id,
+    tool: "runtime.workspace.create",
+    target: handle.containerName,
+    outcome: "succeeded",
+    responseSummary: `Isolated workspace created on ${handle.imageDigest || "the pinned agent image"}.`,
+  });
+
+  const agent = deps.agentFor(handle);
+
+  await agent.waitUntilReady?.({ timeoutMs: deps.readyTimeoutMs ?? 120_000 });
+
+  return agent;
 }
 
 /**
@@ -216,6 +320,7 @@ async function failRun(deps: RunDeps, run: RunRow, error: unknown) {
     outcome: "failed",
     responseSummary: reason,
   });
+  await destroyWorkspace(deps, run.id);
 
   return { status, reason };
 }
@@ -246,7 +351,7 @@ export async function cancelInvestigation(
 
   if (run.agent_conversation_id) {
     try {
-      ({ stopped } = await deps.agent.cancel(run.agent_conversation_id));
+      ({ stopped } = await (await agentForRun(deps, run)).cancel(run.agent_conversation_id));
     } catch (error) {
       // The run is still marked cancelled: the operator's intent wins over a failed
       // stop call, and the agent server is paused or unreachable either way.
@@ -271,6 +376,9 @@ export async function cancelInvestigation(
       ? "Agent goal stopped."
       : "Agent stop did not confirm; investigation marked cancelled.",
   });
+  // The container goes whether or not the stop call confirmed: removing it is what
+  // actually guarantees the run stopped working and spending.
+  await destroyWorkspace(deps, run.id);
 
   const cancelled = await deps.store.getRun(run.id);
 
@@ -327,6 +435,24 @@ export async function* relayInvestigation(
     return;
   }
 
+  let agent: AgentPort;
+
+  try {
+    agent = await agentForRun(deps, run);
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : "The investigation workspace is unreachable.";
+
+    if (isActiveStatus(run.status)) {
+      await deps.store.updateRunStatus(run.id, "failed", { failureReason: reason });
+      await destroyWorkspace(deps, run.id);
+    }
+
+    yield { type: "error", reason, retryable: false };
+    yield { type: "end", status: "failed" };
+    return;
+  }
+
   const startedAt = run.started_at ? Date.parse(run.started_at) : now();
   const deadlineMs = run.wallclock_limit_seconds * 1_000;
   let seq = await deps.store.nextEventSeq(run.id);
@@ -340,7 +466,7 @@ export async function* relayInvestigation(
   let lastErrorSummary: string | null = null;
 
   try {
-    for await (const frame of deps.agent.streamActivity(run.agent_conversation_id, {
+    for await (const frame of agent.streamActivity(run.agent_conversation_id, {
       signal: input.signal,
       deadlineMs,
     })) {
@@ -376,9 +502,10 @@ export async function* relayInvestigation(
           ? `The ${deps.limits.runWallclockMinutes}-minute time limit for an investigation elapsed.`
           : budget.reason;
 
-        await deps.agent.cancel(run.agent_conversation_id);
+        await agent.cancel(run.agent_conversation_id);
         await persistUsage(deps, run, snapshot.usage);
         await deps.store.updateRunStatus(run.id, stopStatus, { failureReason: reason });
+        await destroyWorkspace(deps, run.id);
         yield { type: "budget", status: stopStatus, reason };
         yield { type: "end", status: stopStatus };
         return;
@@ -394,6 +521,7 @@ export async function* relayInvestigation(
 
       if (isTerminalStatus(snapshot.status)) {
         await persistUsage(deps, run, snapshot.usage);
+        await destroyWorkspace(deps, run.id);
         yield { type: "end", status };
         return;
       }
@@ -411,6 +539,7 @@ export async function* relayInvestigation(
     if (agentError === null || !agentError.retryable || agentError.code === "rate_limited") {
       finalStatus = agentError ? (runStatusForFailure(agentError.code) as RunStatus) : "failed";
       await deps.store.updateRunStatus(run.id, finalStatus, { failureReason: reason });
+      await destroyWorkspace(deps, run.id);
     }
 
     yield { type: "error", reason, retryable: agentError?.retryable ?? false };
@@ -422,7 +551,111 @@ export async function* relayInvestigation(
     await persistUsage(deps, run, lastUsage);
   }
 
+  if (!isActiveStatus(finalStatus)) {
+    await destroyWorkspace(deps, run.id);
+  }
+
   yield { type: "end", status: finalStatus };
+}
+
+export type ReconcileOutcome = {
+  /** Runs the database thought were live and that this pass ended. */
+  endedRuns: string[];
+  /** Containers with no live run behind them that were removed. */
+  reapedWorkspaces: string[];
+};
+
+/**
+ * Restart recovery. A gateway restart severs the relay, so an investigation left running
+ * inside its container would keep working and spending with nothing supervising it, no
+ * events reaching the database and no wall-clock enforcement. Recovery is therefore
+ * deliberate rather than optimistic: every run the database still believes is live is
+ * ended and its workspace destroyed, and any investigation container without a live run
+ * behind it is reaped.
+ */
+export async function reconcileInvestigations(deps: RunDeps): Promise<ReconcileOutcome> {
+  const active = await deps.store.listActiveRuns();
+  const endedRuns: string[] = [];
+
+  for (const run of active) {
+    await deps.store.updateRunStatus(run.id, "failed", {
+      failureReason:
+        "The LabOps gateway restarted while this investigation was running, so it was ended and its workspace destroyed. Start a new investigation.",
+    });
+    await destroyWorkspace(deps, run.id);
+    endedRuns.push(run.id);
+  }
+
+  return {
+    endedRuns,
+    reapedWorkspaces: await reapOrphanWorkspaces(deps, new Set(endedRuns)),
+  };
+}
+
+/**
+ * Periodic sweep. Enforces the wall-clock limit on runs whose relay nobody is watching —
+ * the limit is measured from the run's own start time, so it survives a restart — and
+ * removes containers whose run is already terminal.
+ */
+export async function enforceRunDeadlines(deps: RunDeps): Promise<ReconcileOutcome> {
+  const now = deps.now ?? Date.now;
+  const active = await deps.store.listActiveRuns();
+  const endedRuns: string[] = [];
+
+  for (const run of active) {
+    const startedAt = Date.parse(run.started_at ?? run.created_at);
+    const elapsedSeconds = (now() - startedAt) / 1_000;
+
+    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < run.wallclock_limit_seconds) {
+      continue;
+    }
+
+    if (run.agent_conversation_id) {
+      try {
+        await (await agentForRun(deps, run)).cancel(run.agent_conversation_id);
+      } catch {
+        // The container is about to be removed, which stops the run regardless.
+      }
+    }
+
+    await deps.store.updateRunStatus(run.id, "timed_out", {
+      failureReason: `The ${Math.round(
+        run.wallclock_limit_seconds / 60,
+      )}-minute time limit for an investigation elapsed.`,
+    });
+    await destroyWorkspace(deps, run.id);
+    endedRuns.push(run.id);
+  }
+
+  return {
+    endedRuns,
+    reapedWorkspaces: await reapOrphanWorkspaces(deps, new Set(endedRuns)),
+  };
+}
+
+/** Destroys every investigation container that no longer has a live run behind it. */
+async function reapOrphanWorkspaces(deps: RunDeps, alreadyEnded: Set<string>) {
+  if (!deps.runtime) {
+    return [];
+  }
+
+  const [present, active] = await Promise.all([
+    deps.runtime.list(),
+    deps.store.listActiveRuns(),
+  ]);
+  const live = new Set(active.map((run) => run.id));
+  const reaped: string[] = [];
+
+  for (const runId of present) {
+    if (live.has(runId) && !alreadyEnded.has(runId)) {
+      continue;
+    }
+
+    await destroyWorkspace(deps, runId);
+    reaped.push(runId);
+  }
+
+  return reaped;
 }
 
 /**

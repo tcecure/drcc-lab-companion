@@ -8,6 +8,8 @@ import {
   cancelInvestigation,
   publishReviewedFindings,
   recordResolution,
+  enforceRunDeadlines,
+  reconcileInvestigations,
   relayInvestigation,
   startInvestigation,
   type AgentPort,
@@ -15,6 +17,7 @@ import {
   type RunDeps,
 } from "@/lib/labops/runs";
 import type { LabOpsStore, RunRow, RunStatus } from "@/lib/labops/store";
+import type { WorkspaceHandle, WorkspaceRuntime } from "@/lib/labops/workspace";
 import type { SupportRequestRow } from "@/lib/labops/intake";
 
 const limits: LabOpsLimits = {
@@ -115,6 +118,10 @@ type StubState = {
   >["messages"];
   writeSwitches: Record<string, boolean>;
   findingsNotes: Array<{ runId: string; supportRequestId: string; body: string }>;
+  /** Rows the gateway wrote to ai_run_workspaces, keyed by run. */
+  workspaceRows: Array<{ runId: string; containerName: string; volumeName: string }>;
+  destroyedWorkspaceRows: string[];
+  otherActiveRuns: RunRow[];
 };
 
 function stubStore(state: StubState): LabOpsStore {
@@ -209,7 +216,84 @@ function stubStore(state: StubState): LabOpsStore {
       return { created: true };
     },
     async recordIntegrationHealth() {},
+    async listActiveRuns() {
+      const own = state.run && isActive(state.run.status) ? [state.run] : [];
+      return [...own, ...state.otherActiveRuns];
+    },
+    async recordWorkspace(input) {
+      state.workspaceRows.push({
+        runId: input.runId,
+        containerName: input.containerName,
+        volumeName: input.volumeName,
+      });
+    },
+    async markWorkspaceDestroyed(runId) {
+      state.destroyedWorkspaceRows.push(runId);
+    },
   };
+}
+
+function isActive(status: RunStatus) {
+  return (
+    status === "queued" ||
+    status === "running" ||
+    status === "paused" ||
+    status === "awaiting_approval"
+  );
+}
+
+type StubRuntime = WorkspaceRuntime & {
+  started: string[];
+  destroyed: string[];
+  live: Map<string, WorkspaceHandle>;
+};
+
+/**
+ * Stands in for run-investigation.sh. Each run gets its own container name, volume and
+ * address, so a test can prove the gateway talks to the run's own workspace rather than a
+ * shared one.
+ */
+function stubRuntime(overrides: Partial<WorkspaceRuntime> = {}): StubRuntime {
+  const live = new Map<string, WorkspaceHandle>();
+  const started: string[] = [];
+  const destroyed: string[] = [];
+  let nextHost = 10;
+
+  const runtime: StubRuntime = {
+    started,
+    destroyed,
+    live,
+    async start(runId) {
+      started.push(runId);
+      nextHost += 1;
+
+      const handle: WorkspaceHandle = {
+        runId,
+        containerName: `labops-inv-${runId}`,
+        volumeName: `labops-inv-${runId}`,
+        imageDigest: "ghcr.io/openhands/agent-server@sha256:pinned",
+        endpoint: `172.31.241.${nextHost}:8000`,
+        running: true,
+      };
+
+      live.set(runId, handle);
+
+      return handle;
+    },
+    async inspect(runId) {
+      return live.get(runId) ?? null;
+    },
+    async list() {
+      return [...live.keys()];
+    },
+    async destroy(runId) {
+      destroyed.push(runId);
+      live.delete(runId);
+    },
+    ...overrides,
+  };
+
+  return runtime;
 }
 
 function stubAgent(overrides: Partial<AgentPort> = {}): AgentPort {
@@ -243,6 +327,39 @@ function deps(state: StubState, agent = stubAgent()): RunDeps {
   };
 }
 
+/**
+ * Per-run runtime wiring, as gateway.ts assembles it: one container per investigation,
+ * reached at the address the runtime reports, and a model base URL scoped to the run.
+ */
+function perRunDeps(
+  state: StubState,
+  options: {
+    agentFor?: (handle: WorkspaceHandle) => AgentPort;
+    runtime?: StubRuntime;
+    now?: () => number;
+  } = {},
+): RunDeps & { runtime: StubRuntime; endpointsUsed: string[] } {
+  const runtime = options.runtime ?? stubRuntime();
+  const endpointsUsed: string[] = [];
+
+  return {
+    ...deps(state),
+    ...(options.now ? { now: options.now } : {}),
+    runtime,
+    endpointsUsed,
+    readyTimeoutMs: 1_000,
+    agentFor: (handle) => {
+      endpointsUsed.push(handle.endpoint);
+      return options.agentFor?.(handle) ?? stubAgent();
+    },
+    llmFor: (runId) => ({
+      model: "openai/gpt-5.5",
+      apiKey: "proxy-token",
+      baseUrl: `http://172.31.241.2:8081/r/${runId}/v1`,
+    }),
+  };
+}
+
 let state: StubState;
 
 beforeEach(() => {
@@ -259,6 +376,9 @@ beforeEach(() => {
     usageRows: [],
     writeSwitches: {},
     findingsNotes: [],
+    workspaceRows: [],
+    destroyedWorkspaceRows: [],
+    otherActiveRuns: [],
   };
 });
 
@@ -706,5 +826,276 @@ describe("filing findings on the ticket", () => {
       "succeeded",
       "denied",
     ]);
+  });
+});
+
+describe("per-investigation containers", () => {
+  const event: AgentActivityEvent = {
+    id: "evt-1",
+    kind: "action",
+    source: "agent",
+    timestamp: "2026-08-25T00:01:30.000Z",
+    summary: "Read the pod firewall rules",
+    toolName: "execute_bash",
+    redacted: false,
+  };
+
+  it("launches a container for the run, records it, and uses its own address", async () => {
+    const runtimeDeps = perRunDeps(state);
+
+    const result = await startInvestigation(runtimeDeps, {
+      identity: owner,
+      supportRequestId: state.request!.id,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(runtimeDeps.runtime.started).toEqual(["run-1"]);
+    expect(runtimeDeps.endpointsUsed).toEqual(["172.31.241.11:8000"]);
+    expect(state.workspaceRows).toEqual([
+      {
+        runId: "run-1",
+        containerName: "labops-inv-run-1",
+        volumeName: "labops-inv-run-1",
+      },
+    ]);
+    expect(state.toolActions.map((action) => action.tool)).toContain(
+      "runtime.workspace.create",
+    );
+  });
+
+  it("gives the container a model base URL scoped to its own run", async () => {
+    const seen: Array<string | undefined> = [];
+    const runtimeDeps = perRunDeps(state, {
+      agentFor: () =>
+        stubAgent({
+          async createConversation(input) {
+            seen.push(input.llm?.baseUrl);
+            // The provider key is never handed to a container; the proxy holds it.
+            expect(input.llm?.apiKey).toBe("proxy-token");
+            return snapshot("running", usage(0, 0, 0));
+          },
+        }),
+    });
+
+    await startInvestigation(runtimeDeps, {
+      identity: owner,
+      supportRequestId: state.request!.id,
+    });
+
+    expect(seen).toEqual(["http://172.31.241.2:8081/r/run-1/v1"]);
+  });
+
+  it("destroys the workspace when the conversation cannot be created", async () => {
+    const runtimeDeps = perRunDeps(state, {
+      agentFor: () =>
+        stubAgent({
+          async createConversation() {
+            throw new AgentServerError("unavailable", "Agent server is unreachable.");
+          },
+        }),
+    });
+
+    const result = await startInvestigation(runtimeDeps, {
+      identity: owner,
+      supportRequestId: state.request!.id,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(runtimeDeps.runtime.destroyed).toEqual(["run-1"]);
+    expect(state.destroyedWorkspaceRows).toEqual(["run-1"]);
+  });
+
+  it("destroys the workspace when the run finishes", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const runtimeDeps = perRunDeps(state, {
+      runtime,
+      agentFor: () =>
+        stubAgent({
+          async *streamActivity() {
+            yield { type: "event" as const, event };
+            yield {
+              type: "status" as const,
+              snapshot: snapshot("succeeded", usage(10, 5, 0.01)),
+            };
+          },
+        }),
+    });
+
+    await collect(relayInvestigation(runtimeDeps, { runId: "run-1" }));
+
+    expect(runtimeDeps.runtime.destroyed).toEqual(["run-1"]);
+    expect(state.destroyedWorkspaceRows).toEqual(["run-1"]);
+  });
+
+  it("destroys the workspace when a budget stops the run", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const runtimeDeps = perRunDeps(state, {
+      runtime,
+      agentFor: () =>
+        stubAgent({
+          async *streamActivity() {
+            yield {
+              type: "status" as const,
+              snapshot: snapshot("running", usage(400_000, 0, 0)),
+            };
+          },
+        }),
+    });
+
+    const frames = await collect(relayInvestigation(runtimeDeps, { runId: "run-1" }));
+
+    expect(frames.some((frame) => frame.type === "budget")).toBe(true);
+    expect(runtimeDeps.runtime.destroyed).toEqual(["run-1"]);
+  });
+
+  it("refuses to relay a run whose container is gone instead of using another one", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    // A different investigation is running; this run's own container is absent.
+    await runtime.start("run-other");
+
+    const runtimeDeps = perRunDeps(state, { runtime });
+    const frames = await collect(relayInvestigation(runtimeDeps, { runId: "run-1" }));
+
+    expect(frames[0]).toMatchObject({ type: "error" });
+    expect(runtimeDeps.endpointsUsed).toEqual([]);
+    expect(state.statusUpdates.at(-1)?.status).toBe("failed");
+    expect(runtime.live.has("run-other")).toBe(true);
+  });
+
+  it("ends runs the database still calls active after a gateway restart", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const outcome = await reconcileInvestigations(perRunDeps(state, { runtime }));
+
+    expect(outcome.endedRuns).toEqual(["run-1"]);
+    expect(runtime.destroyed).toContain("run-1");
+    expect(state.statusUpdates.at(-1)?.status).toBe("failed");
+    expect(state.statusUpdates.at(-1)?.patch?.failureReason).toContain("restarted");
+  });
+
+  it("reaps a container left behind with no live run", async () => {
+    state.run = null;
+
+    const runtime = stubRuntime();
+    await runtime.start("run-orphan");
+
+    const outcome = await reconcileInvestigations(perRunDeps(state, { runtime }));
+
+    expect(outcome.reapedWorkspaces).toEqual(["run-orphan"]);
+    expect(runtime.live.size).toBe(0);
+  });
+
+  it("ends a run that outlives its wall-clock limit with nobody watching the relay", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const outcome = await enforceRunDeadlines(
+      perRunDeps(state, {
+        runtime,
+        // 21 minutes after the run started; the limit is 20.
+        now: () => Date.parse("2026-08-25T00:22:00.000Z"),
+      }),
+    );
+
+    expect(outcome.endedRuns).toEqual(["run-1"]);
+    expect(state.statusUpdates.at(-1)?.status).toBe("timed_out");
+    expect(runtime.destroyed).toContain("run-1");
+  });
+
+  it("leaves a run inside its limit alone", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const outcome = await enforceRunDeadlines(perRunDeps(state, { runtime }));
+
+    expect(outcome).toEqual({ endedRuns: [], reapedWorkspaces: [] });
+    expect(runtime.live.has("run-1")).toBe(true);
+  });
+
+  it("records a cleanup failure instead of losing it", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime({
+      async destroy() {
+        throw new Error("docker daemon is not responding");
+      },
+    });
+    await runtime.start("run-1");
+
+    await cancelInvestigation(perRunDeps(state, { runtime }), {
+      identity: owner,
+      runId: "run-1",
+    });
+
+    const cleanup = state.toolActions.filter(
+      (action) => action.tool === "runtime.workspace.destroy",
+    );
+
+    expect(cleanup).toEqual([{ tool: "runtime.workspace.destroy", outcome: "failed" }]);
+  });
+
+  it("destroys the workspace when the owner cancels", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const result = await cancelInvestigation(perRunDeps(state, { runtime }), {
+      identity: owner,
+      runId: "run-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(runtime.destroyed).toEqual(["run-1"]);
+    expect(state.destroyedWorkspaceRows).toEqual(["run-1"]);
   });
 });
