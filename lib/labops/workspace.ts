@@ -56,6 +56,18 @@ export class WorkspaceRuntimeError extends Error {
 
 type ExecResult = { code: number; stdout: string; stderr: string };
 
+/**
+ * Runtime failures are reported to staff without host detail: the launcher path, its stderr and
+ * raw spawn errors describe the gateway's internals, and the message reaches the investigation
+ * list, the detail banner and the persisted `failure_reason`. The detail goes to the service
+ * journal, which only a host operator can read.
+ */
+function runtimeFailure(message: string, detail: string, exitCode: number | null = null) {
+  console.error(`[labops] ${message}: ${detail}`);
+
+  return new WorkspaceRuntimeError(message, exitCode);
+}
+
 function run(
   command: string,
   args: readonly string[],
@@ -87,9 +99,7 @@ function run(
         }
 
         reject(
-          new WorkspaceRuntimeError(
-            `Investigation runtime could not be invoked: ${error.message}`,
-          ),
+          runtimeFailure("The investigation runtime could not be invoked", error.message),
         );
       },
     );
@@ -147,10 +157,9 @@ export function createWorkspaceRuntime(
       : run(launcher, args, { timeoutMs: ms });
 
   const failed = (action: string, result: ExecResult) =>
-    new WorkspaceRuntimeError(
-      `Investigation runtime failed to ${action}: ${
-        result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`
-      }`,
+    runtimeFailure(
+      `Investigation runtime failed to ${action}`,
+      result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`,
       result.code,
     );
 

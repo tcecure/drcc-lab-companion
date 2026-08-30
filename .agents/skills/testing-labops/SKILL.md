@@ -144,3 +144,47 @@ rendering results into the DOM is what makes them both readable and recordable.
   runs before the id guard, so every bad id returns 401. Bad-id coverage needs a session.
 - `/` returns `302 /labops` at the edge; `/labops` is the branded login page and
   `/admin/labops` 307s there when unauthenticated.
+
+## Not-configured mode: check every route, not just the easy ones
+
+Unsetting every `LABOPS_*` var and restarting `next dev` (config is cached per process) makes most
+gateway routes answer `503 {"code":"not_configured"}` and the console render the
+"LabOps AI is not installed on this host" card. In a `next dev` process started with no `LABOPS_*`
+vars, however, the nested routes
+`/api/labops/investigations/<id>/cancel`, `.../findings-note` and `.../activity` have been observed
+answering **`404 text/html`** (Next's not-found page) instead of `503` JSON, while the same routes
+answer JSON normally in configured mode. This is a `next dev` on-demand compilation artefact, not
+an app gap: under `next build --webpack && next start` with no `LABOPS_*` set, all ten gateway
+routes — including `.../cancel`, `.../findings-note` and `.../activity` — answer
+`503 application/json {"code":"not_configured"}`. Confirm any 404 against a production build
+before filing it, and treat the full route matrix as a required assertion rather than
+extrapolating from `/api/labops/health`.
+
+## Runtime-unavailable error text is a leak surface
+
+With `LABOPS_RUNTIME_MODE=per_run` and the launcher absent, a start correctly fails closed with
+`502 {"code":"agent_unavailable"}`, but check the *message*: the raw spawn error
+(`... spawn /opt/labops/.../run-investigation.sh ENOENT`) can travel into the API body, the start
+banner in `components/labops/actions.tsx`, the detail page banner, tool-action summaries and the
+persisted `ai_runs.failure_reason`, i.e. it becomes durable staff-visible content. Always scan all
+five surfaces, not just the HTTP body, for `/opt/labops`, `run-investigation.sh`, `ENOENT` and
+`spawn `. Those strings are only acceptable in the server log: `lib/labops/workspace.ts` reports a
+fixed message (`The investigation runtime could not be invoked`, or
+`Investigation runtime failed to <action>`) and sends the launcher path, its stderr and the spawn
+error to `console.error` only, so the detail lives in `journalctl -u labops-gateway`.
+
+## Local fixture passwords
+
+The local Supabase fixtures (`labops-owner@digitalrcc.test`, `labops-staff@digitalrcc.test`,
+`labops-student@digitalrcc.test`) are created by an ad-hoc seed script, so their passwords are
+easily lost across box restarts. Rather than re-seeding, reset one against the LOCAL stack:
+`curl -X PUT -H "apikey: $SR" -H "Authorization: Bearer $SR" -H 'content-type: application/json' \
+  -d '{"password":"<new>"}' http://127.0.0.1:54321/auth/v1/admin/users/<user_id>`
+(`$SR` = local service-role key). Never do this against production users.
+
+## Owner-vs-non-owner without a second account
+
+To test "staff but not owner" you do not need another login: restart the harness with
+`LABOPS_OWNER_EMAIL=nobody-owner@digitalrcc.test` and keep the existing staff session. The intake
+row must then read "Operator only" with no Investigate control, GETs stay 200, and
+start/cancel/findings-note/PATCH must all return `403 {"code":"forbidden"}`.
