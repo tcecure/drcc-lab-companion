@@ -44,7 +44,13 @@ LABOPS_LLM_MODEL=gpt-5-mini
 LABOPS_LLM_API_KEY=sk-canary-LLMKEYLEAK-9911        # fake canary, greppable
 LABOPS_AGENT_SERVER_API_KEY=canary-AGENTKEYLEAK-7742 # fake canary
 LABOPS_AGENT_SERVER_URL=http://127.0.0.1:8123        # nothing listening -> agent down
+LABOPS_MODEL_PROXY_TOKEN=canary-PROXYTOKENLEAK-3310  # fake canary; mandatory in per_run mode
 ```
+
+`lib/labops/config.ts` requires `LABOPS_MODEL_PROXY_TOKEN` whenever
+`LABOPS_RUNTIME_MODE=per_run`, and a missing one is indistinguishable from not-configured mode —
+the console shows the "not installed" card rather than an error, so set the canary token even
+when the runtime itself is deliberately absent.
 
 Using fake *canary* values instead of real keys is the trick that makes leak checks objective:
 scan page HTML and API bodies for the canary strings and for the private URL. Unsetting all
