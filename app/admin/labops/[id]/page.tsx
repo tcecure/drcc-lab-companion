@@ -14,7 +14,7 @@ import { requireManager } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { authorizeLabOpsRequest } from "@/lib/labops/authz";
 import { isUuid } from "@/lib/labops/http";
-import { isActiveStatus, labopsStore } from "@/lib/labops/store";
+import { isActiveStatus, labopsStore, pendingStepSummary } from "@/lib/labops/store";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +112,7 @@ export default async function InvestigationPage({
           <ActivityStream
             canDecideSteps={operator.ok}
             initialStatus={run.status}
+            pendingStep={pendingStepSummary(events)}
             runId={run.id}
           />
         </Card>

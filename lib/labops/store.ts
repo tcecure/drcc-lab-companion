@@ -191,6 +191,31 @@ export function relayCursorFromRows(
   };
 }
 
+/**
+ * The action a held run is waiting on, read from the persisted timeline. The relay never
+ * re-sends an event it has already stored, so without this an operator who reloads the
+ * page is asked to allow or refuse a step with nothing describing it.
+ */
+export function pendingStepSummary(
+  rows: readonly { kind: string; payload: unknown }[],
+): string | null {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+
+    if (!/action/i.test(row.kind)) {
+      continue;
+    }
+
+    const payload = (row.payload ?? {}) as Record<string, unknown>;
+    const summary = typeof payload.summary === "string" ? payload.summary : null;
+    const toolName = typeof payload.toolName === "string" ? payload.toolName : null;
+
+    return summary ?? toolName ?? row.kind;
+  }
+
+  return null;
+}
+
 const investigableStatusList = ["open", "in_progress", "waiting_on_student"] as const;
 
 function startOfMonthIso(now: Date) {

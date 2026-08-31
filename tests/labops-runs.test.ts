@@ -17,7 +17,13 @@ import {
   type RelayFrame,
   type RunDeps,
 } from "@/lib/labops/runs";
-import type { LabOpsStore, RunRow, RunStatus } from "@/lib/labops/store";
+import {
+  pendingStepSummary,
+  relayCursorFromRows,
+  type LabOpsStore,
+  type RunRow,
+  type RunStatus,
+} from "@/lib/labops/store";
 import type { WorkspaceHandle, WorkspaceRuntime } from "@/lib/labops/workspace";
 import type { SupportRequestRow } from "@/lib/labops/intake";
 
@@ -1161,5 +1167,41 @@ describe("per-investigation containers", () => {
     expect(result.ok).toBe(true);
     expect(runtime.destroyed).toEqual(["run-1"]);
     expect(state.destroyedWorkspaceRows).toEqual(["run-1"]);
+  });
+});
+
+describe("resuming a relay and describing a held step", () => {
+  it("resumes from the persisted timeline instead of replaying it", () => {
+    const cursor = relayCursorFromRows([
+      {
+        seq: 2,
+        payload: { agentEventId: "evt-2", timestamp: "2026-08-31T10:51:23.536Z" },
+      },
+      {
+        seq: 1,
+        payload: { agentEventId: "evt-1", timestamp: "2026-08-31T10:51:18.945Z" },
+      },
+    ]);
+
+    expect(cursor.nextSeq).toBe(3);
+    expect(cursor.since).toBe("2026-08-31T10:51:23.536Z");
+    // The agent's timestamp bound is inclusive, so the ids are what stops a duplicate.
+    expect(cursor.seenEventIds).toEqual(["evt-2", "evt-1"]);
+  });
+
+  it("reads the held action out of the persisted timeline", () => {
+    // The relay never re-sends a stored event, so an operator who reloads the page would
+    // otherwise be asked to allow or refuse a step with nothing describing it.
+    expect(
+      pendingStepSummary([
+        { kind: "ActionEvent", payload: { summary: "Run `ip addr show` on pod03-gw" } },
+        { kind: "ConversationStateUpdateEvent", payload: { summary: "waiting_for_confirmation" } },
+      ]),
+    ).toBe("Run `ip addr show` on pod03-gw");
+
+    expect(pendingStepSummary([{ kind: "MessageEvent", payload: { summary: "hello" } }])).toBeNull();
+    expect(pendingStepSummary([{ kind: "ActionEvent", payload: { toolName: "terminal" } }])).toBe(
+      "terminal",
+    );
   });
 });

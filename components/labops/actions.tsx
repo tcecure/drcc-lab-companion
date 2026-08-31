@@ -366,11 +366,17 @@ export function ActivityStream({
   runId,
   initialStatus,
   canDecideSteps = false,
+  pendingStep = null,
 }: {
   runId: string;
   initialStatus: string;
   /** Only the pilot operator may decide a step; the gateway enforces it regardless. */
   canDecideSteps?: boolean;
+  /**
+   * The held action as already persisted. The relay does not re-send an event it has
+   * stored, so this is what an operator arriving after the fact has to decide on.
+   */
+  pendingStep?: string | null;
 }) {
   const router = useRouter();
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -422,11 +428,15 @@ export function ActivityStream({
     return () => source.close();
   }, [generation, router, runId]);
 
-  const pendingStep = frames.reduce<Frame | null>(
+  const liveStep = frames.reduce<Frame | null>(
     (latest, frame) =>
       frame.type === "event" && /action/i.test(frame.event.kind) ? frame : latest,
     null,
   );
+  const proposed =
+    liveStep?.type === "event"
+      ? (liveStep.event.summary ?? liveStep.event.toolName ?? liveStep.event.kind)
+      : pendingStep;
 
   return (
     <div className="grid gap-3">
@@ -446,13 +456,7 @@ export function ActivityStream({
             setProblem(null);
             setGeneration((current) => current + 1);
           }}
-          proposed={
-            pendingStep?.type === "event"
-              ? (pendingStep.event.summary ??
-                pendingStep.event.toolName ??
-                pendingStep.event.kind)
-              : null
-          }
+          proposed={proposed}
           runId={runId}
         />
       ) : null}

@@ -425,7 +425,7 @@ export async function decideAgentStep(
 ): Promise<StepDecisionResult> {
   const run = await deps.store.getRun(input.runId);
 
-  if (!run || !run.agent_conversation_id) {
+  if (!run) {
     return {
       ok: false,
       code: "run_not_found",
@@ -433,7 +433,7 @@ export async function decideAgentStep(
     };
   }
 
-  if (run.status !== "awaiting_approval") {
+  if (!run.agent_conversation_id || run.status !== "awaiting_approval") {
     return {
       ok: false,
       code: "not_awaiting_approval",
