@@ -633,6 +633,40 @@ describe("relaying activity", () => {
     expect(state.statusUpdates.at(-1)?.status).toBe("succeeded");
   });
 
+  it("keeps the agent's own prose as a message, and the brief's echo out of it", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const agent = stubAgent({
+      async *streamActivity() {
+        // The server replays the brief back as a user-sourced MessageEvent.
+        yield {
+          type: "event" as const,
+          event: { ...event, id: "evt-brief", kind: "MessageEvent", source: "user", summary: "brief" },
+        };
+        yield {
+          type: "event" as const,
+          event: {
+            ...event,
+            id: "evt-answer",
+            kind: "MessageEvent",
+            summary: "Pod01 has no blocked connections logged; the seed job never ran.",
+          },
+        };
+        yield { type: "status" as const, snapshot: snapshot("succeeded", usage(10, 5, 0.01)) };
+      },
+    });
+
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    expect(state.messages).toEqual([
+      { role: "assistant", content: "Pod01 has no blocked connections logged; the seed job never ran." },
+    ]);
+  });
+
   it("gives a failed run a reason drawn from the agent's error event", async () => {
     // A provider rejection reaches the gateway only as an error event; without this the
     // operator sees a bare 'failed'.

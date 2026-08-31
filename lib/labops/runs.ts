@@ -488,6 +488,15 @@ function isErrorEvent(event: AgentActivityEvent) {
 }
 
 /**
+ * The agent's own prose, as opposed to a tool step or an observation. It is kept in
+ * `ai_messages` as well as the timeline so the conversation survives after the run's
+ * container and its event detail have been reviewed.
+ */
+export function isAgentConclusion(event: AgentActivityEvent) {
+  return /message/i.test(event.kind) && event.source !== "user";
+}
+
+/**
  * A failed conversation with nothing to say about why is worse than useless to the
  * operator, so a failure always carries text: the agent's own (already redacted) error
  * when there is one, and otherwise a statement of what is known.
@@ -574,6 +583,10 @@ export async function* relayInvestigation(
       if (frame.type === "event") {
         if (isErrorEvent(frame.event) && frame.event.summary) {
           lastErrorSummary = frame.event.summary.slice(0, 500);
+        }
+
+        if (isAgentConclusion(frame.event) && frame.event.summary) {
+          await deps.store.appendMessage(run.id, "assistant", frame.event.summary);
         }
 
         await deps.store.appendEvents(run.id, [frame.event], seq);
