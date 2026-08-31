@@ -581,6 +581,16 @@ export async function finishDirectConversation(
 }
 
 /**
+ * The pinned image's digest, short enough to compare against the host and without the
+ * registry path, so the audit trail stays useful without naming the upstream project.
+ */
+function shortImageDigest(imageDigest: string | null | undefined) {
+  const digest = /sha256:([0-9a-f]{7,})/i.exec(imageDigest ?? "")?.[1];
+
+  return digest ? ` (sha256:${digest.slice(0, 12)})` : null;
+}
+
+/**
  * Gives the run its own container, records it, and waits for the agent inside to answer.
  * Under the shared topology there is nothing to launch.
  */
@@ -602,7 +612,11 @@ async function launchWorkspace(deps: RunDeps, run: RunRow): Promise<AgentPort> {
     tool: "runtime.workspace.create",
     target: handle.containerName,
     outcome: "succeeded",
-    responseSummary: `Isolated workspace created on ${handle.imageDigest || "the pinned agent image"}.`,
+    // The full image reference stays in ai_run_workspaces, which nothing renders: the
+    // operator-facing summary names the pinned image without its upstream vendor path.
+    responseSummary: `Isolated workspace created on the pinned agent image${
+      shortImageDigest(handle.imageDigest) ?? ""
+    }.`,
   });
 
   const agent = deps.agentFor(handle);
@@ -809,6 +823,29 @@ export function failureReasonFor(status: RunStatus, errorSummary: string | null)
   );
 }
 
+/** How long a direct conversation may look idle while an answer is still owed. */
+const directIdlePatienceMs = 120_000;
+/** Gap between following an idle-but-owing conversation again. */
+const directIdlePollMs = 1_500;
+/** Bounds the follow loop even if the clock does not advance between passes. */
+const directIdleFollowLimit = Math.ceil(directIdlePatienceMs / directIdlePollMs);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * True when the newest stored turn is the operator's, so the agent still owes an answer.
+ */
+async function isAwaitingReply(deps: RunDeps, runId: string) {
+  const messages = await deps.store.listMessages(runId);
+  const conversational = messages.filter(
+    (message) => message.role === "user" || message.role === "assistant",
+  );
+
+  return conversational.at(-1)?.role === "user";
+}
+
 export type RelayFrame =
   | { type: "event"; event: AgentActivityEvent }
   | { type: "status"; status: RunStatus; usage: UsageSnapshot }
@@ -859,7 +896,7 @@ export async function* relayInvestigation(
 
   const startedAt = run.started_at ? Date.parse(run.started_at) : now();
   const deadlineMs = run.wallclock_limit_seconds * 1_000;
-  const cursor = await deps.store.eventCursor(run.id);
+  let cursor = await deps.store.eventCursor(run.id);
   let seq = cursor.nextSeq;
   let lastUsage: UsageSnapshot | null = null;
   let finalStatus: RunStatus = run.status;
@@ -879,93 +916,145 @@ export async function* relayInvestigation(
     [...(await deps.store.listMessages(run.id))]
       .reverse()
       .find((message) => message.role === "assistant")?.content ?? null;
+  /**
+   * Whether the agent still owes an answer to the newest question. The agent server
+   * reports an idle conversation the moment a turn is accepted but before its loop picks
+   * the message up, and its own stream ends on that idle status — so parking on the first
+   * idle report would leave the answer to be generated, and billed, with nobody relaying
+   * or storing it. The relay therefore follows the conversation again until the answer
+   * lands or `directIdlePatienceMs` of genuine idleness passes.
+   */
+  let awaitingReply = await isAwaitingReply(deps, run.id);
+  let idleSince: number | null = null;
+  /** Set when the agent reports idle; acted on once its stream has drained. */
+  let parkDirect = false;
+  let follows = 0;
 
   try {
-    for await (const frame of agent.streamActivity(run.agent_conversation_id, {
-      signal: input.signal,
-      deadlineMs,
-      since: cursor.since,
-      seenEventIds: cursor.seenEventIds,
-    })) {
-      if (frame.type === "event") {
-        if (isErrorEvent(frame.event) && frame.event.summary) {
-          lastErrorSummary = frame.event.summary.slice(0, 500);
+    following: while (true) {
+      for await (const frame of agent.streamActivity(run.agent_conversation_id, {
+        signal: input.signal,
+        deadlineMs: Math.max(deadlineMs - (now() - startedAt), 0),
+        since: cursor.since,
+        seenEventIds: cursor.seenEventIds,
+      })) {
+        if (frame.type === "event") {
+          if (isErrorEvent(frame.event) && frame.event.summary) {
+            lastErrorSummary = frame.event.summary.slice(0, 500);
+          }
+
+          if (
+            isAgentConclusion(frame.event) &&
+            frame.event.summary &&
+            frame.event.summary !== lastAssistantText
+          ) {
+            await deps.store.appendMessage(run.id, "assistant", frame.event.summary);
+            lastAssistantText = frame.event.summary;
+            awaitingReply = false;
+          }
+
+          await deps.store.appendEvents(run.id, [frame.event], seq);
+          seq += 1;
+          yield { type: "event", event: frame.event };
+          continue;
         }
 
-        if (
-          isAgentConclusion(frame.event) &&
-          frame.event.summary &&
-          frame.event.summary !== lastAssistantText
-        ) {
-          await deps.store.appendMessage(run.id, "assistant", frame.event.summary);
-          lastAssistantText = frame.event.summary;
-        }
+        const snapshot = frame.snapshot;
+        const status = snapshot.status as RunStatus;
 
-        await deps.store.appendEvents(run.id, [frame.event], seq);
-        seq += 1;
-        yield { type: "event", event: frame.event };
-        continue;
-      }
+        finalStatus = status;
+        lastUsage = snapshot.usage;
 
-      const snapshot = frame.snapshot;
-      const status = snapshot.status as RunStatus;
-
-      finalStatus = status;
-      lastUsage = snapshot.usage;
-
-      const budget = evaluateRunBudget(deps.limits, {
-        usage: snapshot.usage,
-        startedAt,
-        now: now(),
-        monthToDateCostUsd: await deps.store.monthToDateCostUsd(),
-      });
-
-      if (frame.type === "deadline" || !budget.shouldContinue) {
-        const stopStatus = budget.shouldContinue
-          ? "timed_out"
-          : (statusForStopReason(budget.stopReason) as RunStatus);
-        const reason = budget.shouldContinue
-          ? `The ${deps.limits.runWallclockMinutes}-minute time limit for an investigation elapsed.`
-          : budget.reason;
-
-        await agent.cancel(run.agent_conversation_id);
-        await persistUsage(deps, run, snapshot.usage);
-        await deps.store.updateRunStatus(run.id, stopStatus, { failureReason: reason });
-        await destroyWorkspace(deps, run.id);
-        yield { type: "budget", status: stopStatus, reason };
-        yield { type: "end", status: stopStatus };
-        return;
-      }
-
-      // A direct conversation that has answered is not finished: the agent is idle and
-      // listening, so the run parks in `paused` — shown as Ready — with its workspace
-      // alive until the operator finishes or stops it, or a limit ends it above.
-      if (run.source === "direct" && (status === "succeeded" || status === "paused")) {
-        await persistUsage(deps, run, snapshot.usage);
-
-        if (run.status !== "paused") {
-          await deps.store.updateRunStatus(run.id, "paused");
-        }
-
-        yield { type: "status", status: "paused", usage: snapshot.usage };
-        yield { type: "end", status: "paused" };
-        return;
-      }
-
-      if (status !== run.status) {
-        await deps.store.updateRunStatus(run.id, status, {
-          failureReason: failureReasonFor(status, lastErrorSummary),
+        const budget = evaluateRunBudget(deps.limits, {
+          usage: snapshot.usage,
+          startedAt,
+          now: now(),
+          monthToDateCostUsd: await deps.store.monthToDateCostUsd(),
         });
+
+        if (frame.type === "deadline" || !budget.shouldContinue) {
+          const stopStatus = budget.shouldContinue
+            ? "timed_out"
+            : (statusForStopReason(budget.stopReason) as RunStatus);
+          const reason = budget.shouldContinue
+            ? `The ${deps.limits.runWallclockMinutes}-minute time limit for an investigation elapsed.`
+            : budget.reason;
+
+          await agent.cancel(run.agent_conversation_id);
+          await persistUsage(deps, run, snapshot.usage);
+          await deps.store.updateRunStatus(run.id, stopStatus, { failureReason: reason });
+          await destroyWorkspace(deps, run.id);
+          yield { type: "budget", status: stopStatus, reason };
+          yield { type: "end", status: stopStatus };
+          return;
+        }
+
+        // A direct conversation that has answered is not finished: the agent is idle and
+        // listening, so the run parks in `paused` — shown as Ready — with its workspace
+        // alive until the operator finishes or stops it, or a limit ends it above. The
+        // agent writes its closing message just after reporting idle, so the park waits
+        // for its stream to drain rather than returning here.
+        if (run.source === "direct" && (status === "succeeded" || status === "paused")) {
+          parkDirect = true;
+          idleSince ??= now();
+          continue;
+        }
+
+        idleSince = null;
+
+        if (status !== run.status) {
+          await deps.store.updateRunStatus(run.id, status, {
+            failureReason: failureReasonFor(status, lastErrorSummary),
+          });
+        }
+
+        yield { type: "status", status, usage: snapshot.usage };
+
+        if (isTerminalStatus(snapshot.status)) {
+          await persistUsage(deps, run, snapshot.usage);
+          await destroyWorkspace(deps, run.id);
+          yield { type: "end", status };
+          return;
+        }
       }
 
-      yield { type: "status", status, usage: snapshot.usage };
-
-      if (isTerminalStatus(snapshot.status)) {
-        await persistUsage(deps, run, snapshot.usage);
-        await destroyWorkspace(deps, run.id);
-        yield { type: "end", status };
-        return;
+      if (!parkDirect) {
+        break following;
       }
+
+      awaitingReply = awaitingReply && (await isAwaitingReply(deps, run.id));
+      follows += 1;
+
+      if (
+        awaitingReply &&
+        follows <= directIdleFollowLimit &&
+        now() - (idleSince ?? now()) < directIdlePatienceMs
+      ) {
+        // The turn has been accepted but not answered yet: keep the operator on Running
+        // and follow the conversation from where this pass left off.
+        parkDirect = false;
+        cursor = await deps.store.eventCursor(run.id);
+        seq = cursor.nextSeq;
+        yield {
+          type: "status",
+          status: "running",
+          usage: lastUsage ?? (await deps.store.runUsage(run.id)),
+        };
+        await sleep(directIdlePollMs);
+        continue following;
+      }
+
+      if (lastUsage) {
+        await persistUsage(deps, run, lastUsage);
+      }
+
+      if (run.status !== "paused") {
+        await deps.store.updateRunStatus(run.id, "paused");
+      }
+
+      yield { type: "status", status: "paused", usage: lastUsage ?? (await deps.store.runUsage(run.id)) };
+      yield { type: "end", status: "paused" };
+      return;
     }
   } catch (error) {
     const agentError = error instanceof AgentServerError ? error : null;

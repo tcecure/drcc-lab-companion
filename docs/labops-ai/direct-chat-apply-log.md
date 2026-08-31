@@ -80,3 +80,34 @@ alter table public.ai_runs alter column support_request_id set not null;
 Rolling the application back without rolling the schema back is safe and is the preferred
 order: the Phase 2 release ignores `source` entirely, and the default keeps every run it
 creates a valid ticket investigation.
+
+## Post-pilot corrections (no schema change)
+
+The first owner-driven production conversation exposed two application defects. Both are
+fixed in the application only; the migration above is untouched.
+
+**A follow-up answer could be billed and then lost.** The agent server reports an *idle*
+conversation in the gap between accepting a turn and its loop picking the message up, and
+ends its own activity stream on that report. The relay treated the first idle report as
+"the agent has answered and is listening", parked the run at Ready and returned — so the
+answer the agent then wrote had nobody relaying or storing it, while the provider call was
+still billed. On production this produced a follow-up with a user message, an
+`ai_model_usage` row of 7,157 + 25 tokens ($0.0066) and no `assistant` row at all.
+
+The relay now parks only once the agent is idle *and* the newest stored turn is not the
+operator's; while an answer is still owed it follows the conversation again from the stored
+event cursor, holding the operator on Running, up to two minutes of genuine idleness.
+
+**A pending confirmation did not appear until a manual reload.** The browser never opened
+the activity stream for a freshly started conversation: the effect that opens it excluded
+`status` from its dependencies (to avoid tearing the stream down mid-answer), so the first
+render after starting — which still carried the previous status — never reopened it. The
+effect now reacts to status and keeps the open stream in a ref, so a status change cannot
+tear it down, and streams are opened only for `queued`/`running`, since Ready and a held
+step both wait on the operator instead.
+
+**Agent-image branding in the audit surface.** `ai_tool_actions.response_summary` for
+`runtime.workspace.create` recorded the full pinned image reference, and the run detail page
+renders that summary verbatim. New runs record "Isolated workspace created on the pinned
+agent image (sha256:<12 hex>)"; the full reference stays in `ai_run_workspaces`, which
+nothing renders. Rows written before this change keep the old text.

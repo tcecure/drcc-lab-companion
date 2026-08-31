@@ -51,6 +51,8 @@ export type ChatHistoryEntry = {
 };
 
 const activeStatuses = new Set(["queued", "running", "paused", "awaiting_approval"]);
+/** The states in which there is agent activity to follow. */
+const streamedStatuses = new Set(["queued", "running"]);
 
 /** Operator-facing wording. `paused` is the agent listening, so it reads as Ready. */
 function statusLabel(status: string) {
@@ -142,6 +144,8 @@ export function DirectChat({
   const [generation, setGeneration] = useState(0);
   const [tick, setTick] = useState(() => Date.now());
   const closedByServer = useRef(false);
+  /** The stream open right now, so a status change never tears it down mid-answer. */
+  const openStream = useRef<{ key: string; source: EventSource } | null>(null);
   const conversationId = conversation?.id ?? null;
 
   useEffect(() => {
@@ -153,16 +157,38 @@ export function DirectChat({
     setLimitNotice(null);
   }, [conversation?.id, conversation?.status, conversation?.usage]);
 
+  // Closing is tied to the conversation and generation alone: the effect below reacts to
+  // status as well, because the first render after starting a conversation still carries
+  // the previous status, and a stream that never opened leaves the operator watching a
+  // run with no activity at all.
+  useEffect(
+    () => () => {
+      openStream.current?.source.close();
+      openStream.current = null;
+    },
+    [conversationId, generation],
+  );
+
   useEffect(() => {
-    // Ready means the agent is idle and listening: there is nothing to stream until the
-    // operator sends the next message, which reopens this through `generation`.
-    if (!conversationId || !activeStatuses.has(status) || status === "paused") {
+    // Ready means the agent is idle and listening, and a held step waits on a decision:
+    // neither has anything to stream until the operator acts, which reopens this through
+    // `generation`.
+    if (!conversationId || !activeStatuses.has(status) || !streamedStatuses.has(status)) {
+      return;
+    }
+
+    const key = `${conversationId}:${generation}`;
+
+    if (openStream.current?.key === key) {
       return;
     }
 
     closedByServer.current = false;
 
     const source = new EventSource(`/api/labops/investigations/${conversationId}/activity`);
+
+    openStream.current = { key, source };
+
     const handle = (raw: MessageEvent) => {
       const frame = JSON.parse(raw.data) as Frame;
 
@@ -191,6 +217,11 @@ export function DirectChat({
       setStatus(frame.status);
       closedByServer.current = true;
       source.close();
+
+      if (openStream.current?.source === source) {
+        openStream.current = null;
+      }
+
       // The assistant's reply is persisted by the relay, so the transcript comes back
       // from the server rather than being reassembled here.
       router.refresh();
@@ -206,13 +237,14 @@ export function DirectChat({
       }
 
       source.close();
-    };
 
-    return () => source.close();
-    // `status` is deliberately not a dependency: the stream reports it, and reopening on
-    // every reported status would restart the relay mid-answer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, generation, router]);
+      if (openStream.current?.source === source) {
+        openStream.current = null;
+      }
+    };
+    // No teardown here: this effect reruns on every reported status, and the stream it
+    // opened is closed by the effect above when the conversation or generation changes.
+  }, [conversationId, generation, status, router]);
 
   useEffect(() => {
     if (!activeStatuses.has(status)) {
