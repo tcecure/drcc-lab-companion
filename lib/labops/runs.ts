@@ -238,6 +238,7 @@ export async function startInvestigation(
     podLabel,
     messages: conversation.messages,
     messageAttachments: conversation.attachments,
+    internalExcluded: conversation.internalExcluded,
   });
   const run = await deps.store.createRun({
     supportRequestId: request.id,

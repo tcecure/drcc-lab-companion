@@ -140,7 +140,12 @@ function stubStore(state: StubState): LabOpsStore {
       return state.request;
     },
     async getSupportConversation() {
-      return { messages: state.messagesOnTicket ?? [], attachments: [] };
+      return {
+        messages: (state.messagesOnTicket ?? []).filter((message) => !message.is_internal),
+        attachments: [],
+        internalExcluded: (state.messagesOnTicket ?? []).filter((message) => message.is_internal)
+          .length,
+      };
     },
     async getPodLabel() {
       return "Pod01";

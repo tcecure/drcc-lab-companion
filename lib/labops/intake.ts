@@ -191,6 +191,8 @@ export function buildInvestigationBrief(
     attachments?: readonly SupportRequestAttachment[];
     messages?: readonly SupportMessageRow[];
     messageAttachments?: readonly ConversationAttachmentMeta[];
+    /** Internal notes the store filtered out before the brief was built. */
+    internalExcluded?: number;
   } = {},
 ): InvestigationBrief {
   const subject = sanitizeUntrustedText(request.subject, { maxLength: 200 });
@@ -247,7 +249,11 @@ export function buildInvestigationBrief(
       .filter(Boolean)
       .join("\n\n"),
     provenance: {
-      redactions: [...subject.redactions, ...description.redactions],
+      redactions: [
+        ...subject.redactions,
+        ...description.redactions,
+        ...(conversation?.provenance.redactions ?? []),
+      ],
       pii: [
         ...new Set([
           ...subject.pii,
@@ -266,7 +272,10 @@ export function buildInvestigationBrief(
         subject.truncated ||
         description.truncated ||
         (conversation?.provenance.truncatedMessages ?? 0) > 0,
-      internalMessagesExcluded: conversation?.internalExcluded ?? 0,
+      internalMessagesExcluded: Math.max(
+        context.internalExcluded ?? 0,
+        conversation?.internalExcluded ?? 0,
+      ),
       messagesDroppedForBounds: conversation?.droppedForBounds ?? 0,
     },
   };

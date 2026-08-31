@@ -200,6 +200,33 @@ describe("event normalisation", () => {
     expect(event.toolName).toBe("ExecuteBash");
   });
 
+  it("keeps the agent's own reply, which the server nests under llm_message", () => {
+    // Shape taken from the pinned agent server's own OpenAPI schema: MessageEvent carries
+    // no text of its own, so missing this key hid every conclusion the agent reached.
+    const event = normalizeEvent({
+      id: "e2",
+      kind: "MessageEvent",
+      source: "agent",
+      timestamp: "2026-08-31T13:36:52Z",
+      llm_message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Pod01 logged no blocked connections because…" }],
+      },
+    });
+
+    expect(event.summary).toBe("Pod01 logged no blocked connections because…");
+    expect(event.redacted).toBe(false);
+  });
+
+  it("keeps an agent error and a refusal reason", () => {
+    expect(normalizeEvent({ kind: "AgentErrorEvent", error: "tool call failed" }).summary).toBe(
+      "tool call failed",
+    );
+    expect(
+      normalizeEvent({ kind: "UserRejectObservation", rejection_reason: "not that host" }).summary,
+    ).toBe("not that host");
+  });
+
   it("returns a page with its cursor", () => {
     const page = parseEventPage({
       items: [{ id: "e1", kind: "MessageEvent", source: "agent", content: [{ text: "hello" }] }],

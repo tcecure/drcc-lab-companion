@@ -63,6 +63,7 @@ export type ConversationContext = {
     pii: string[];
     neutralized: string[];
     truncatedMessages: number;
+    redactions: SanitizeResult["redactions"];
   };
 };
 
@@ -194,6 +195,7 @@ export function buildConversationContext(
       pii: [...new Set(kept.flatMap(({ result }) => result.pii))],
       neutralized: [...new Set(kept.flatMap(({ result }) => result.neutralized))],
       truncatedMessages: kept.filter(({ result }) => result.truncated).length,
+      redactions: kept.flatMap(({ result }) => result.redactions),
     },
   };
 }

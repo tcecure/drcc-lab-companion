@@ -74,6 +74,8 @@ export type LabOpsStore = {
   getSupportConversation(supportRequestId: string): Promise<{
     messages: SupportMessageRow[];
     attachments: ConversationAttachmentMeta[];
+    /** How many internal notes were left behind, counted without reading their bodies. */
+    internalExcluded: number;
   }>;
   getPodLabel(labAssignmentId: string | null): Promise<string | null>;
   countActiveRuns(): Promise<number>;
@@ -293,10 +295,16 @@ export function createLabOpsStore(
         throw new Error(`Could not read the ticket conversation: ${error.message}`);
       }
 
+      const { count } = await client
+        .from("support_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("support_request_id", supportRequestId)
+        .eq("is_internal", true);
+      const internalExcluded = count ?? 0;
       const messageIds = (messages ?? []).map((message) => message.id);
 
       if (messageIds.length === 0) {
-        return { messages: [], attachments: [] };
+        return { messages: [], attachments: [], internalExcluded };
       }
 
       // Metadata only: storage paths and signed URLs are never copied into a brief.
@@ -307,6 +315,7 @@ export function createLabOpsStore(
 
       return {
         messages: messages ?? [],
+        internalExcluded,
         attachments: (attachments ?? []).map((attachment) => ({
           messageId: attachment.support_message_id,
           fileName: attachment.file_name,

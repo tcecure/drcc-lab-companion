@@ -301,7 +301,7 @@ export type AgentActivityEvent = {
 };
 
 function collectText(value: unknown, depth = 0): string[] {
-  if (depth > 4 || value === null || value === undefined) {
+  if (depth > 6 || value === null || value === undefined) {
     return [];
   }
 
@@ -319,13 +319,18 @@ function collectText(value: unknown, depth = 0): string[] {
       "text",
       "content",
       "message",
+      // The agent's own replies — the conclusion staff read — live under llm_message.
+      "llm_message",
       "thought",
+      "summary",
       "output",
       "command",
       "reason",
+      "rejection_reason",
       "action",
       "observation",
       "result",
+      "error",
     ]
       .filter((key) => key in record)
       .flatMap((key) => collectText(record[key], depth + 1));
