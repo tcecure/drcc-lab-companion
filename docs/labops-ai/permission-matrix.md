@@ -19,6 +19,7 @@ removing it later is a config change, not a rewrite.
 | Start an investigation | yes | yes | yes | yes | no | no |
 | Pause / cancel / resume own run | yes | yes | yes | yes | no | no |
 | … in the Phase 1 pilot | **owner only** | no | no | no | no | no |
+| Allow or refuse the agent action a run is held on | **owner only** | no | no | no | no | no |
 | More than one active investigation | no (capped at 1 in the pilot) | no | no | no | no | no |
 | Cancel anyone's run | yes | yes | no | no | no | no |
 | Read run timeline, sanitized output, artifacts | yes | yes | yes | yes | yes | no |

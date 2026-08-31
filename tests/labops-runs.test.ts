@@ -6,6 +6,7 @@ import type { LabOpsLimits, UsageSnapshot } from "@/lib/labops/budgets";
 import type { LabOpsIdentity } from "@/lib/labops/policy";
 import {
   cancelInvestigation,
+  decideAgentStep,
   publishReviewedFindings,
   recordResolution,
   enforceRunDeadlines,
@@ -167,8 +168,8 @@ function stubStore(state: StubState): LabOpsStore {
     async runUsage() {
       return state.recordedUsage;
     },
-    async nextEventSeq() {
-      return state.events.length + 1;
+    async eventCursor() {
+      return { nextSeq: state.events.length + 1, seenEventIds: [] };
     },
     async listEvents() {
       return [];
@@ -305,6 +306,7 @@ function stubAgent(overrides: Partial<AgentPort> = {}): AgentPort {
     async cancel() {
       return { stopped: true };
     },
+    async respondToConfirmation() {},
     async getConversation() {
       return snapshot("running", usage(0, 0, 0));
     },
@@ -516,6 +518,64 @@ describe("cancelling an investigation", () => {
     const result = await cancelInvestigation(deps(state), { identity: owner, runId: "run-1" });
 
     expect(result).toMatchObject({ ok: false, code: "already_terminal" });
+  });
+});
+
+describe("deciding the step an agent is waiting on", () => {
+  it("allows the pending action and resumes the run", async () => {
+    state.run = runRow({ status: "awaiting_approval", agent_conversation_id: "conv-1" });
+    const decisions: { accept: boolean; reason?: string }[] = [];
+    const agent = stubAgent({
+      async respondToConfirmation(_conversationId, input) {
+        decisions.push(input);
+      },
+    });
+
+    const result = await decideAgentStep(deps(state, agent), {
+      identity: owner,
+      runId: "run-1",
+      accept: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(decisions).toEqual([{ accept: true }]);
+    expect(state.statusUpdates.at(-1)?.status).toBe("running");
+    expect(state.toolActions.at(-1)).toMatchObject({
+      tool: "agent.action.allow",
+      outcome: "allowed",
+    });
+  });
+
+  it("sends a refusal reason back to the agent", async () => {
+    state.run = runRow({ status: "awaiting_approval", agent_conversation_id: "conv-1" });
+    const decisions: { accept: boolean; reason?: string }[] = [];
+    const agent = stubAgent({
+      async respondToConfirmation(_conversationId, input) {
+        decisions.push(input);
+      },
+    });
+
+    await decideAgentStep(deps(state, agent), {
+      identity: owner,
+      runId: "run-1",
+      accept: false,
+      reason: "Do not touch the gateway.",
+    });
+
+    expect(decisions).toEqual([{ accept: false, reason: "Do not touch the gateway." }]);
+    expect(state.toolActions.at(-1)).toMatchObject({ tool: "agent.action.refuse" });
+  });
+
+  it("refuses to decide a run with no step waiting", async () => {
+    state.run = runRow({ status: "running", agent_conversation_id: "conv-1" });
+
+    const result = await decideAgentStep(deps(state), {
+      identity: owner,
+      runId: "run-1",
+      accept: true,
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "not_awaiting_approval" });
   });
 });
 

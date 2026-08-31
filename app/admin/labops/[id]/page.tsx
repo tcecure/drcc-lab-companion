@@ -109,7 +109,11 @@ export default async function InvestigationPage({
 
       {active ? (
         <Card eyebrow="Live" title="Agent activity">
-          <ActivityStream initialStatus={run.status} runId={run.id} />
+          <ActivityStream
+            canDecideSteps={operator.ok}
+            initialStatus={run.status}
+            runId={run.id}
+          />
         </Card>
       ) : null}
 

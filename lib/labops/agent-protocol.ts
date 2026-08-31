@@ -51,7 +51,16 @@ export const agentRoutes = {
   stop: (id: string) =>
     `/api/conversations/${encodeURIComponent(id)}/goal/stop`,
   pause: (id: string) => `/api/conversations/${encodeURIComponent(id)}/pause`,
+  respondToConfirmation: (id: string) =>
+    `/api/conversations/${encodeURIComponent(id)}/events/respond_to_confirmation`,
 } as const;
+
+export function buildConfirmationResponseBody(input: { accept: boolean; reason?: string }) {
+  return {
+    accept: input.accept,
+    ...(input.reason ? { reason: input.reason } : {}),
+  };
+}
 
 export type LlmSettings = {
   model: string;
@@ -188,6 +197,10 @@ type RawMetrics = {
   } | null;
 };
 
+type RawStats = {
+  usage_to_metrics?: Record<string, RawMetrics> | null;
+};
+
 function count(input: unknown) {
   return typeof input === "number" && Number.isFinite(input) && input > 0 ? input : 0;
 }
@@ -205,6 +218,43 @@ export function extractUsage(metrics: unknown): UsageSnapshot {
     completionTokens: count(tokens.completion_tokens),
     costUsd: count(raw.accumulated_cost),
   };
+}
+
+/**
+ * The agent server reports spend per LLM usage id under `stats.usage_to_metrics`, and
+ * leaves the flat `metrics` field null. Reading only `metrics` therefore made every run
+ * look free, which would have left the token and spend caps unable to ever fire, so both
+ * shapes are accepted and every usage id is summed.
+ */
+export function extractStatsUsage(stats: unknown, metrics: unknown): UsageSnapshot {
+  const perUsage = ((stats ?? {}) as RawStats).usage_to_metrics ?? {};
+
+  return Object.values(perUsage).reduce<UsageSnapshot>(
+    (total, entry) => {
+      const usage = extractUsage(entry);
+
+      return {
+        promptTokens: total.promptTokens + usage.promptTokens,
+        completionTokens: total.completionTokens + usage.completionTokens,
+        costUsd: total.costUsd + usage.costUsd,
+      };
+    },
+    extractUsage(metrics),
+  );
+}
+
+function statsModelName(stats: unknown) {
+  const perUsage = ((stats ?? {}) as RawStats).usage_to_metrics ?? {};
+
+  for (const entry of Object.values(perUsage)) {
+    const name = text(entry?.model_name);
+
+    if (name) {
+      return name;
+    }
+  }
+
+  return null;
 }
 
 export function parseConversation(
@@ -226,8 +276,8 @@ export function parseConversation(
     executionStatus,
     status: mapExecutionStatus(executionStatus, context),
     title: text(raw.title),
-    usage: extractUsage(metrics),
-    modelName: text(metrics?.model_name),
+    usage: extractStatsUsage(raw.stats, metrics),
+    modelName: text(metrics?.model_name) ?? statsModelName(raw.stats),
     leafEventId: text(raw.leaf_event_id),
     createdAt: text(raw.created_at),
     updatedAt: text(raw.updated_at),

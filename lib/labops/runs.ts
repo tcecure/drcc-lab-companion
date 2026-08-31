@@ -63,6 +63,10 @@ export type AgentPort = {
   ): Promise<ConversationSnapshot>;
   run(conversationId: string): Promise<void>;
   cancel(conversationId: string): Promise<{ stopped: boolean }>;
+  respondToConfirmation(
+    conversationId: string,
+    input: { accept: boolean; reason?: string },
+  ): Promise<void>;
   getConversation(
     conversationId: string,
     context?: { started?: boolean },
@@ -71,6 +75,8 @@ export type AgentPort = {
     conversationId: string,
     options?: {
       pageId?: string;
+      since?: string;
+      seenEventIds?: Iterable<string>;
       pollIntervalMs?: number;
       deadlineMs?: number;
       signal?: AbortSignal;
@@ -397,6 +403,85 @@ export async function cancelInvestigation(
   return { ok: true, run: summarizeRun(cancelled ?? run) };
 }
 
+export type StepDecisionFailureCode = "run_not_found" | "not_awaiting_approval";
+
+export type StepDecisionResult =
+  | { ok: true; run: RunSummary }
+  | { ok: false; code: StepDecisionFailureCode; reason: string };
+
+/**
+ * Decides the action the agent is waiting on. Every agent action is gated by the
+ * AlwaysConfirm policy, so an investigation makes no progress at all until the operator
+ * allows or refuses each step here; the decision and its author are audited either way.
+ */
+export async function decideAgentStep(
+  deps: RunDeps,
+  input: {
+    identity: LabOpsIdentity;
+    runId: string;
+    accept: boolean;
+    reason?: string;
+  },
+): Promise<StepDecisionResult> {
+  const run = await deps.store.getRun(input.runId);
+
+  if (!run || !run.agent_conversation_id) {
+    return {
+      ok: false,
+      code: "run_not_found",
+      reason: "That investigation does not exist.",
+    };
+  }
+
+  if (run.status !== "awaiting_approval") {
+    return {
+      ok: false,
+      code: "not_awaiting_approval",
+      reason: `The investigation is ${run.status.replace(/_/g, " ")} and has no step waiting for a decision.`,
+    };
+  }
+
+  const decidedBy = input.identity.email ?? input.identity.userId;
+  const refusal =
+    input.reason?.trim() ||
+    `Refused by ${decidedBy}. Propose a different step or report what you already know.`;
+
+  try {
+    await (
+      await agentForRun(deps, run)
+    ).respondToConfirmation(run.agent_conversation_id, {
+      accept: input.accept,
+      ...(input.accept ? {} : { reason: refusal }),
+    });
+  } catch (error) {
+    await deps.store.recordToolAction({
+      runId: run.id,
+      tool: input.accept ? "agent.action.allow" : "agent.action.refuse",
+      outcome: "failed",
+      responseSummary:
+        error instanceof Error ? error.message : "The agent did not accept the decision.",
+    });
+
+    throw error;
+  }
+
+  await deps.store.recordToolAction({
+    runId: run.id,
+    tool: input.accept ? "agent.action.allow" : "agent.action.refuse",
+    outcome: "allowed",
+    responseSummary: input.accept
+      ? `Step allowed by ${decidedBy}.`
+      : `Step refused by ${decidedBy}.`,
+  });
+  // The agent resumes on both answers — a refusal is a message it reasons about — so the
+  // run goes back to running and the relay follows it from here.
+  await deps.store.updateRunStatus(run.id, "running");
+
+  const resumed = await deps.store.getRun(run.id);
+
+  return { ok: true, run: summarizeRun(resumed ?? run) };
+}
+
 function isErrorEvent(event: AgentActivityEvent) {
   return /error/i.test(event.kind);
 }
@@ -467,7 +552,8 @@ export async function* relayInvestigation(
 
   const startedAt = run.started_at ? Date.parse(run.started_at) : now();
   const deadlineMs = run.wallclock_limit_seconds * 1_000;
-  let seq = await deps.store.nextEventSeq(run.id);
+  const cursor = await deps.store.eventCursor(run.id);
+  let seq = cursor.nextSeq;
   let lastUsage: UsageSnapshot | null = null;
   let finalStatus: RunStatus = run.status;
   /**
@@ -481,6 +567,8 @@ export async function* relayInvestigation(
     for await (const frame of agent.streamActivity(run.agent_conversation_id, {
       signal: input.signal,
       deadlineMs,
+      since: cursor.since,
+      seenEventIds: cursor.seenEventIds,
     })) {
       if (frame.type === "event") {
         if (isErrorEvent(frame.event) && frame.event.summary) {

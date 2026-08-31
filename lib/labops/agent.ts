@@ -22,6 +22,7 @@ import "server-only";
 import { readLabOpsConfig, type LabOpsConfig } from "@/lib/labops/config";
 import {
   agentRoutes,
+  buildConfirmationResponseBody,
   buildCreateConversationBody,
   buildSendMessageBody,
   classifyHttpStatus,
@@ -358,6 +359,22 @@ export class AgentClient {
     }
   }
 
+  /**
+   * Answers the pending confirmation the AlwaysConfirm policy raised before each agent
+   * action. Accepting lets that one action run; refusing tells the agent why and lets it
+   * choose another course. Without this the run simply stops at its first action.
+   */
+  async respondToConfirmation(
+    conversationId: string,
+    input: { accept: boolean; reason?: string },
+  ): Promise<void> {
+    await this.request<unknown>(agentRoutes.respondToConfirmation(conversationId), {
+      method: "POST",
+      body: buildConfirmationResponseBody(input),
+      timeoutMs: 15_000,
+    });
+  }
+
   async pause(conversationId: string): Promise<void> {
     await this.request<unknown>(agentRoutes.pause(conversationId), {
       method: "POST",
@@ -390,7 +407,12 @@ export class AgentClient {
 
   async listEvents(
     conversationId: string,
-    options: { pageId?: string; limit?: number; signal?: AbortSignal } = {},
+    options: {
+      pageId?: string;
+      limit?: number;
+      since?: string;
+      signal?: AbortSignal;
+    } = {},
   ): Promise<AgentEventPage> {
     const payload = await this.request<unknown>(
       agentRoutes.searchEvents(conversationId),
@@ -401,11 +423,57 @@ export class AgentClient {
           page_id: options.pageId,
           limit: options.limit ?? 100,
           sort_order: "TIMESTAMP",
+          timestamp__gte: options.since,
         },
       },
     );
 
     return parseEventPage(payload);
+  }
+
+  /**
+   * Every event the conversation has produced since `state.since`, following the page
+   * cursor to the end. A page cursor is only valid within one pass — asking for the same
+   * one again returns the same events — so progress is carried between passes by
+   * timestamp instead, and the ids already seen are skipped because that bound is
+   * inclusive. Without both, a poll would relay and persist the same event repeatedly.
+   */
+  private async *drainEvents(
+    conversationId: string,
+    state: { seen: Set<string>; since?: string },
+    signal?: AbortSignal,
+  ) {
+    let pageId: string | undefined;
+
+    while (!signal?.aborted) {
+      const page = await this.listEvents(conversationId, {
+        pageId,
+        since: state.since,
+        signal,
+      });
+
+      for (const event of page.events) {
+        if (event.id && state.seen.has(event.id)) {
+          continue;
+        }
+
+        if (event.id) {
+          state.seen.add(event.id);
+        }
+
+        if (event.timestamp) {
+          state.since = event.timestamp;
+        }
+
+        yield event;
+      }
+
+      if (!page.nextPageId) {
+        return;
+      }
+
+      pageId = page.nextPageId;
+    }
   }
 
   /**
@@ -419,6 +487,8 @@ export class AgentClient {
     conversationId: string,
     options: {
       pageId?: string;
+      since?: string;
+      seenEventIds?: Iterable<string>;
       pollIntervalMs?: number;
       deadlineMs?: number;
       signal?: AbortSignal;
@@ -428,26 +498,13 @@ export class AgentClient {
     const pollIntervalMs = options.pollIntervalMs ?? 1_500;
     const now = options.now ?? Date.now;
     const startedAt = now();
-    let pageId = options.pageId;
-    let started = false;
+    const state = { seen: new Set(options.seenEventIds ?? []), since: options.since };
+    let started = state.seen.size > 0;
 
     while (!options.signal?.aborted) {
-      const page = await this.listEvents(conversationId, {
-        pageId,
-        signal: options.signal,
-      });
-
-      if (page.events.length > 0) {
+      for await (const event of this.drainEvents(conversationId, state, options.signal)) {
         started = true;
-
-        for (const event of page.events) {
-          yield { type: "event" as const, event };
-        }
-      }
-
-      if (page.nextPageId) {
-        pageId = page.nextPageId;
-        continue;
+        yield { type: "event" as const, event };
       }
 
       const snapshot = await this.getConversation(conversationId, { started });
@@ -460,6 +517,14 @@ export class AgentClient {
         snapshot.status === "cancelled" ||
         snapshot.status === "awaiting_approval"
       ) {
+        // The action a run stops on is written a moment after the status changes, so one
+        // last drain is what makes the step the operator has to decide on visible at all.
+        await this.sleep(Math.min(pollIntervalMs, 1_000));
+
+        for await (const event of this.drainEvents(conversationId, state, options.signal)) {
+          yield { type: "event" as const, event };
+        }
+
         return;
       }
 

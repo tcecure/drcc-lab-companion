@@ -105,7 +105,8 @@ export type LabOpsStore = {
     disposition?: "destroyed" | "archived",
   ): Promise<void>;
   runUsage(runId: string): Promise<UsageSnapshot>;
-  nextEventSeq(runId: string): Promise<number>;
+  /** Where a relay should resume from, so a reconnect never re-persists what it already has. */
+  eventCursor(runId: string): Promise<RelayCursor>;
   listEvents(
     runId: string,
     limit?: number,
@@ -163,6 +164,32 @@ export type LabOpsStore = {
     detail?: string | null,
   ): Promise<void>;
 };
+
+export type RelayCursor = {
+  /** Next sequence number in the persisted timeline. */
+  nextSeq: number;
+  /** Timestamp of the newest persisted event, as the agent reported it. */
+  since?: string;
+  /** Agent event ids already persisted, because the timestamp bound is inclusive. */
+  seenEventIds: string[];
+};
+
+export function relayCursorFromRows(
+  rows: readonly { seq: number; payload: unknown }[],
+): RelayCursor {
+  const payloads = rows.map((row) => (row.payload ?? {}) as Record<string, unknown>);
+  const timestamps = payloads
+    .map((payload) => payload.timestamp)
+    .filter((value): value is string => typeof value === "string");
+
+  return {
+    nextSeq: rows.reduce((highest, row) => Math.max(highest, row.seq), 0) + 1,
+    since: timestamps.sort().at(-1),
+    seenEventIds: payloads
+      .map((payload) => payload.agentEventId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  };
+}
 
 const investigableStatusList = ["open", "in_progress", "waiting_on_student"] as const;
 
@@ -492,19 +519,19 @@ export function createLabOpsStore(
       );
     },
 
-    async nextEventSeq(runId) {
+    async eventCursor(runId) {
       const { data, error } = await client
         .from("ai_run_events")
-        .select("seq")
+        .select("seq,payload")
         .eq("run_id", runId)
         .order("seq", { ascending: false })
-        .limit(1);
+        .limit(200);
 
       if (error) {
         throw new Error(`Could not read the investigation timeline: ${error.message}`);
       }
 
-      return (data?.[0]?.seq ?? 0) + 1;
+      return relayCursorFromRows(data ?? []);
     },
 
     async listEvents(runId, limit = 500) {
@@ -564,6 +591,7 @@ export function createLabOpsStore(
           kind: event.kind,
           payload: {
             source: event.source,
+            agentEventId: event.id,
             timestamp: event.timestamp,
             summary: event.summary,
             toolName: event.toolName,

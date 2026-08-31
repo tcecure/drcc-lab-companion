@@ -139,6 +139,36 @@ describe("conversation and usage parsing", () => {
     ).toEqual({ promptTokens: 1_200, completionTokens: 300, costUsd: 0.42 });
   });
 
+  it("reads usage from the per-usage-id stats the agent server actually reports", () => {
+    // The pinned agent server leaves `metrics` null and reports spend under
+    // stats.usage_to_metrics; reading only `metrics` made every run look free, which left
+    // the token and spend caps unable to fire.
+    const snapshot = parseConversation({
+      id: "c1",
+      execution_status: "waiting_for_confirmation",
+      metrics: null,
+      stats: {
+        usage_to_metrics: {
+          "labops-investigation": {
+            model_name: "openai/gpt-5.5",
+            accumulated_cost: 0.04848,
+            accumulated_token_usage: { prompt_tokens: 7_734, completion_tokens: 327 },
+          },
+          condenser: {
+            accumulated_cost: 0.01,
+            accumulated_token_usage: { prompt_tokens: 100, completion_tokens: 10 },
+          },
+        },
+      },
+    });
+
+    expect(snapshot.status).toBe("awaiting_approval");
+    expect(snapshot.modelName).toBe("openai/gpt-5.5");
+    expect(snapshot.usage.promptTokens).toBe(7_834);
+    expect(snapshot.usage.completionTokens).toBe(337);
+    expect(snapshot.usage.costUsd).toBeCloseTo(0.05848, 6);
+  });
+
   it("tolerates a conversation with no metrics yet", () => {
     const snapshot = parseConversation({ id: "c1", execution_status: "running" });
 
