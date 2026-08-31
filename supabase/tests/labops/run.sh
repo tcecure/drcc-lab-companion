@@ -17,7 +17,9 @@ for f in "$HERE/00_harness_base.sql" "$HERE/10_fixtures.sql" \
          "$HERE/90_checks.sql" \
          "$HERE/20_support_conversation.sql" \
          "$M/PROPOSED_20260830000000_labops_ai_phase2_broker.sql" \
-         "$HERE/91_phase2_checks.sql"; do
+         "$HERE/91_phase2_checks.sql" \
+         "$M/PROPOSED_20260901000000_labops_ai_direct_chat.sql" \
+         "$HERE/92_direct_chat_checks.sql"; do
   echo "== $(basename "$f")"
   psql_file "$f"
 done
@@ -26,4 +28,6 @@ echo "== idempotency replay"
 psql_file "$M/PROPOSED_20260825000000_labops_ai_roles.sql"
 psql_file "$M/PROPOSED_20260825010000_labops_ai_runs.sql"
 psql_file "$M/PROPOSED_20260830000000_labops_ai_phase2_broker.sql"
+psql_file "$M/PROPOSED_20260901000000_labops_ai_direct_chat.sql"
+psql_file "$HERE/92_direct_chat_checks.sql"
 echo "ALL CHECKS PASSED"

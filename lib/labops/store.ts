@@ -39,20 +39,49 @@ export function isActiveStatus(status: RunStatus) {
   return (activeRunStatuses as readonly RunStatus[]).includes(status);
 }
 
+/** Where a run came from: a support ticket, or a question typed into Direct Chat. */
+export type RunSource = RunRow["source"];
+
 export type CreateRunInput = {
-  supportRequestId: string;
+  source: RunSource;
+  /** Always null for a direct conversation; the database constraint enforces it too. */
+  supportRequestId: string | null;
   requestedBy: string;
   title: string;
-  brief: InvestigationBrief;
+  /** Already redacted and, for ticket text, sanitized. Stored verbatim on the run. */
+  sanitizedContext: Json;
   model: string;
   provider: string;
   tokenBudget: number;
   wallclockLimitSeconds: number;
 };
 
+/** The sanitized copy of a ticket a run is allowed to keep. Never the raw ticket. */
+export function briefSanitizedContext(brief: InvestigationBrief): Json {
+  return {
+    category: brief.category,
+    priority: brief.priority,
+    podLabel: brief.podLabel,
+    subject: brief.subject,
+    description: brief.description,
+    attachments: brief.attachmentSummary,
+    conversation: brief.conversation
+      ? {
+          entries: brief.conversation.entries,
+          internalExcluded: brief.conversation.internalExcluded,
+          droppedForBounds: brief.conversation.droppedForBounds,
+          deduplicatedDescription: brief.conversation.deduplicatedDescription,
+        }
+      : null,
+    freshness: brief.freshness,
+    provenance: brief.provenance,
+  } as unknown as Json;
+}
+
 export type RunSummary = {
   id: string;
-  supportRequestId: string;
+  supportRequestId: string | null;
+  source: RunSource;
   status: RunStatus;
   title: string;
   model: string;
@@ -81,6 +110,12 @@ export type LabOpsStore = {
   countActiveRuns(): Promise<number>;
   monthToDateCostUsd(now?: Date): Promise<number>;
   createRun(input: CreateRunInput): Promise<RunRow>;
+  /** History page, newest first. `source` narrows it to ticket runs or direct chats. */
+  listRunPage(options?: {
+    limit?: number;
+    offset?: number;
+    source?: RunSource;
+  }): Promise<{ runs: RunRow[]; hasMore: boolean }>;
   attachConversation(runId: string, conversationId: string): Promise<void>;
   markRunStarted(runId: string): Promise<void>;
   updateRunStatus(
@@ -229,6 +264,7 @@ export function summarizeRun(run: RunRow, usage: UsageSnapshot = zeroUsage): Run
   return {
     id: run.id,
     supportRequestId: run.support_request_id,
+    source: run.source,
     status: run.status,
     title: run.title,
     model: run.model,
@@ -375,28 +411,11 @@ export function createLabOpsStore(
         .from("ai_runs")
         .insert({
           support_request_id: input.supportRequestId,
+          source: input.source,
           requested_by: input.requestedBy,
           title: input.title,
           // Sanitized copy only: the brief has already been redacted and neutralized.
-          sanitized_context: {
-            category: input.brief.category,
-            priority: input.brief.priority,
-            podLabel: input.brief.podLabel,
-            subject: input.brief.subject,
-            description: input.brief.description,
-            attachments: input.brief.attachmentSummary,
-            conversation: input.brief.conversation
-              ? {
-                  entries: input.brief.conversation.entries,
-                  internalExcluded: input.brief.conversation.internalExcluded,
-                  droppedForBounds: input.brief.conversation.droppedForBounds,
-                  deduplicatedDescription:
-                    input.brief.conversation.deduplicatedDescription,
-                }
-              : null,
-            freshness: input.brief.freshness,
-            provenance: input.brief.provenance,
-          } as unknown as Json,
+          sanitized_context: input.sanitizedContext,
           model: input.model,
           provider: input.provider,
           token_budget: input.tokenBudget,
@@ -483,6 +502,32 @@ export function createLabOpsStore(
       }
 
       return data ?? [];
+    },
+
+    /**
+     * One page of history. Reading a page at a time keeps the chat sidebar from pulling
+     * every run — and every run's transcript — into a single render.
+     */
+    async listRunPage({ limit = 20, offset = 0, source } = {}) {
+      let query = client
+        .from("ai_runs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit);
+
+      if (source) {
+        query = query.eq("source", source);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw new Error(`Could not read investigation history: ${error.message}`);
+      }
+
+      const rows = data ?? [];
+
+      return { runs: rows.slice(0, limit), hasMore: rows.length > limit };
     },
 
     async listActiveRuns() {

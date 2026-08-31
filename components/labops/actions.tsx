@@ -292,7 +292,7 @@ type Frame =
  * answered, so an investigation makes no progress without a decision here; refusing sends
  * the reason back and lets the agent try something else instead of ending the run.
  */
-function StepDecision({
+export function StepDecision({
   runId,
   proposed,
   onDecided,
