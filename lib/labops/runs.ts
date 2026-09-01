@@ -45,7 +45,9 @@ import {
 } from "@/lib/labops/intake";
 import type { LabOpsIdentity } from "@/lib/labops/policy";
 import type { WorkspaceHandle, WorkspaceRuntime } from "@/lib/labops/workspace";
+import { sanitizeUntrustedText } from "@/lib/labops/sanitize";
 import {
+  briefSanitizedContext,
   isActiveStatus,
   summarizeRun,
   type LabOpsStore,
@@ -53,6 +55,9 @@ import {
   type RunStatus,
   type RunSummary,
 } from "@/lib/labops/store";
+
+/** Longest question or follow-up Direct Chat accepts in one message. */
+export const directPromptMaxLength = 12_000;
 
 /** The only agent-server surface the orchestration is allowed to use. */
 export type AgentPort = {
@@ -66,6 +71,12 @@ export type AgentPort = {
   respondToConfirmation(
     conversationId: string,
     input: { accept: boolean; reason?: string },
+  ): Promise<void>;
+  /** Adds a message to a live conversation. Direct Chat follow-ups go through here. */
+  sendMessage(
+    conversationId: string,
+    text: string,
+    options?: { run?: boolean },
   ): Promise<void>;
   getConversation(
     conversationId: string,
@@ -241,10 +252,11 @@ export async function startInvestigation(
     internalExcluded: conversation.internalExcluded,
   });
   const run = await deps.store.createRun({
+    source: "support_request",
     supportRequestId: request.id,
     requestedBy: input.identity.userId,
     title: titleFor(request, brief.subject),
-    brief,
+    sanitizedContext: briefSanitizedContext(brief),
     model: deps.model,
     provider: deps.provider,
     tokenBudget: deps.limits.runTokenBudget,
@@ -284,6 +296,301 @@ export async function startInvestigation(
 }
 
 /**
+ * A conversation title taken from the question itself. Deliberately deterministic: a
+ * second model call to name a chat would cost money and add another prompt path.
+ */
+export function directTitleFor(prompt: string) {
+  const firstLine = prompt
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  const trimmed = (firstLine ?? "Direct question").replace(/\s+/g, " ");
+
+  return trimmed.length > 90 ? `${trimmed.slice(0, 87)}...` : trimmed;
+}
+
+/**
+ * What the agent is told before the operator's first question. Direct Chat has no ticket
+ * to describe, so the framing carries the operating rules instead: the operator is staff,
+ * every action is confirmed, and nothing outside the workspace is reachable.
+ */
+function directPreamble(prompt: string) {
+  return [
+    "You are the DigitalRCC LabOps assistant, talking directly to a DigitalRCC staff",
+    "operator in the LabOps console. Answer their questions about the CyberLab",
+    "environment, labs and pods. Every action you propose is confirmed by the operator",
+    "before it runs, and this workspace has no access to lab hosts, AWX, the portal",
+    "database or the internet — so reason from what the operator tells you and say plainly",
+    "when you need information you cannot reach. Reply in Markdown.",
+    "",
+    "Operator's question:",
+    prompt,
+  ].join("\n");
+}
+
+export type DirectPromptFailureCode = "prompt_invalid" | "limit_reached" | "agent_unavailable";
+
+export type DirectStartResult =
+  | { ok: true; run: RunSummary }
+  | { ok: false; code: DirectPromptFailureCode; reason: string };
+
+/**
+ * Starts a conversation that has no ticket behind it. Everything else — the isolated
+ * container, the model proxy, the confirmation gate, the budgets, the audit trail — is
+ * the same path a ticket investigation takes; only the source of the first message
+ * differs, and no support_requests row is invented to carry it.
+ */
+export async function startDirectConversation(
+  deps: RunDeps,
+  input: { identity: LabOpsIdentity; prompt: string },
+): Promise<DirectStartResult> {
+  const sanitized = sanitizeUntrustedText(input.prompt, {
+    maxLength: directPromptMaxLength,
+  });
+
+  if (!sanitized.text) {
+    return { ok: false, code: "prompt_invalid", reason: "Enter a question first." };
+  }
+
+  const [activeRuns, monthToDateCostUsd] = await Promise.all([
+    deps.store.countActiveRuns(),
+    deps.store.monthToDateCostUsd(),
+  ]);
+  const startDecision = canStartRun(deps.limits, { activeRuns, monthToDateCostUsd });
+
+  if (!startDecision.allowed) {
+    return { ok: false, code: "limit_reached", reason: startDecision.reason };
+  }
+
+  const run = await deps.store.createRun({
+    source: "direct",
+    supportRequestId: null,
+    requestedBy: input.identity.userId,
+    title: directTitleFor(sanitized.text),
+    sanitizedContext: {
+      kind: "direct",
+      provenance: {
+        redactions: sanitized.redactions,
+        pii: sanitized.pii,
+        neutralized: sanitized.neutralized,
+        truncated: sanitized.truncated,
+      },
+    },
+    model: deps.model,
+    provider: deps.provider,
+    tokenBudget: deps.limits.runTokenBudget,
+    wallclockLimitSeconds: deps.limits.runWallclockMinutes * 60,
+  });
+
+  try {
+    const agent = await launchWorkspace(deps, run);
+    const conversation = await agent.createConversation({
+      workingDir: workspaceDirForRun(run.id),
+      initialMessage: directPreamble(sanitized.text),
+      title: run.title,
+      tags: { runid: run.id, source: "direct" },
+      llm: deps.llmFor?.(run.id),
+    });
+
+    await deps.store.attachConversation(run.id, conversation.id);
+    // Only the operator's own words go in the transcript; the framing above is not
+    // something they wrote, and the console never shows hidden prompt text as theirs.
+    await deps.store.appendMessage(run.id, "user", sanitized.text);
+    await agent.run(conversation.id);
+    await deps.store.markRunStarted(run.id);
+    await deps.store.recordToolAction({
+      runId: run.id,
+      tool: "agent.conversation.start",
+      target: "direct",
+      outcome: "succeeded",
+      responseSummary: `Direct conversation started with ${deps.model}.`,
+    });
+
+    const started = await deps.store.getRun(run.id);
+
+    return { ok: true, run: summarizeRun(started ?? run) };
+  } catch (error) {
+    const failure = await failRun(deps, run, error);
+
+    return { ok: false, code: "agent_unavailable", reason: failure.reason };
+  }
+}
+
+export type DirectMessageFailureCode =
+  | "run_not_found"
+  | "not_direct"
+  | "not_ready"
+  | "prompt_invalid"
+  | "limit_reached"
+  | "agent_unavailable";
+
+export type DirectMessageResult =
+  | { ok: true; run: RunSummary }
+  | { ok: false; code: DirectMessageFailureCode; reason: string };
+
+/**
+ * Adds a follow-up to a live direct conversation. The run must be sitting in `paused` —
+ * shown as Ready — which is the only state in which the agent is listening rather than
+ * working or holding a step for a decision.
+ */
+export async function sendDirectMessage(
+  deps: RunDeps,
+  input: { identity: LabOpsIdentity; runId: string; prompt: string },
+): Promise<DirectMessageResult> {
+  const run = await deps.store.getRun(input.runId);
+
+  if (!run) {
+    return { ok: false, code: "run_not_found", reason: "That conversation does not exist." };
+  }
+
+  if (run.source !== "direct") {
+    return {
+      ok: false,
+      code: "not_direct",
+      reason: "This is a ticket investigation, not a direct conversation.",
+    };
+  }
+
+  if (run.status !== "paused" || !run.agent_conversation_id) {
+    return {
+      ok: false,
+      code: "not_ready",
+      reason:
+        run.status === "awaiting_approval"
+          ? "The agent is waiting for you to allow or refuse a step."
+          : isActiveStatus(run.status)
+            ? "The agent is still working on your last message."
+            : `This conversation is ${run.status.replace(/_/g, " ")} and cannot take another message.`,
+    };
+  }
+
+  const sanitized = sanitizeUntrustedText(input.prompt, {
+    maxLength: directPromptMaxLength,
+  });
+
+  if (!sanitized.text) {
+    return { ok: false, code: "prompt_invalid", reason: "Enter a message first." };
+  }
+
+  const now = deps.now ?? Date.now;
+  const budget = evaluateRunBudget(deps.limits, {
+    usage: await deps.store.runUsage(run.id),
+    startedAt: Date.parse(run.started_at ?? run.created_at),
+    now: now(),
+    monthToDateCostUsd: await deps.store.monthToDateCostUsd(),
+  });
+
+  if (!budget.shouldContinue) {
+    const stopStatus = statusForStopReason(budget.stopReason) as RunStatus;
+
+    await deps.store.updateRunStatus(run.id, stopStatus, { failureReason: budget.reason });
+    await destroyWorkspace(deps, run.id);
+
+    return { ok: false, code: "limit_reached", reason: budget.reason };
+  }
+
+  try {
+    await (
+      await agentForRun(deps, run)
+    ).sendMessage(run.agent_conversation_id, sanitized.text, { run: true });
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : "The agent did not accept the message.";
+
+    await deps.store.recordToolAction({
+      runId: run.id,
+      tool: "agent.conversation.message",
+      outcome: "failed",
+      responseSummary: reason,
+    });
+
+    return { ok: false, code: "agent_unavailable", reason };
+  }
+
+  await deps.store.appendMessage(run.id, "user", sanitized.text);
+  await deps.store.updateRunStatus(run.id, "running");
+  await deps.store.recordToolAction({
+    runId: run.id,
+    tool: "agent.conversation.message",
+    target: "direct",
+    outcome: "succeeded",
+    responseSummary: "Follow-up sent to the running conversation.",
+  });
+
+  const resumed = await deps.store.getRun(run.id);
+
+  return { ok: true, run: summarizeRun(resumed ?? run) };
+}
+
+export type DirectFinishResult =
+  | { ok: true; run: RunSummary }
+  | { ok: false; code: "run_not_found" | "not_direct" | "already_terminal"; reason: string };
+
+/**
+ * Ends a direct conversation the operator is satisfied with: the run succeeds and its
+ * container and volume go. The transcript stays readable, but the workspace is never
+ * recreated for it — a further question is a new conversation.
+ */
+export async function finishDirectConversation(
+  deps: RunDeps,
+  input: { identity: LabOpsIdentity; runId: string },
+): Promise<DirectFinishResult> {
+  const run = await deps.store.getRun(input.runId);
+
+  if (!run) {
+    return { ok: false, code: "run_not_found", reason: "That conversation does not exist." };
+  }
+
+  if (run.source !== "direct") {
+    return {
+      ok: false,
+      code: "not_direct",
+      reason: "This is a ticket investigation, not a direct conversation.",
+    };
+  }
+
+  if (!isActiveStatus(run.status)) {
+    return {
+      ok: false,
+      code: "already_terminal",
+      reason: `This conversation is already ${run.status.replace(/_/g, " ")}.`,
+    };
+  }
+
+  if (run.agent_conversation_id) {
+    try {
+      await (await agentForRun(deps, run)).cancel(run.agent_conversation_id);
+    } catch {
+      // The workspace is removed next, which stops the agent regardless.
+    }
+  }
+
+  await deps.store.updateRunStatus(run.id, "succeeded");
+  await deps.store.recordToolAction({
+    runId: run.id,
+    tool: "agent.conversation.finish",
+    target: "direct",
+    outcome: "succeeded",
+    responseSummary: `Conversation finished by ${input.identity.email ?? input.identity.userId}.`,
+  });
+  await destroyWorkspace(deps, run.id);
+
+  const finished = await deps.store.getRun(run.id);
+
+  return { ok: true, run: summarizeRun(finished ?? run) };
+}
+
+/**
+ * The pinned image's digest, short enough to compare against the host and without the
+ * registry path, so the audit trail stays useful without naming the upstream project.
+ */
+function shortImageDigest(imageDigest: string | null | undefined) {
+  const digest = /sha256:([0-9a-f]{7,})/i.exec(imageDigest ?? "")?.[1];
+
+  return digest ? ` (sha256:${digest.slice(0, 12)})` : null;
+}
+
+/**
  * Gives the run its own container, records it, and waits for the agent inside to answer.
  * Under the shared topology there is nothing to launch.
  */
@@ -305,7 +612,11 @@ async function launchWorkspace(deps: RunDeps, run: RunRow): Promise<AgentPort> {
     tool: "runtime.workspace.create",
     target: handle.containerName,
     outcome: "succeeded",
-    responseSummary: `Isolated workspace created on ${handle.imageDigest || "the pinned agent image"}.`,
+    // The full image reference stays in ai_run_workspaces, which nothing renders: the
+    // operator-facing summary names the pinned image without its upstream vendor path.
+    responseSummary: `Isolated workspace created on the pinned agent image${
+      shortImageDigest(handle.imageDigest) ?? ""
+    }.`,
   });
 
   const agent = deps.agentFor(handle);
@@ -512,6 +823,29 @@ export function failureReasonFor(status: RunStatus, errorSummary: string | null)
   );
 }
 
+/** How long a direct conversation may look idle while an answer is still owed. */
+const directIdlePatienceMs = 120_000;
+/** Gap between following an idle-but-owing conversation again. */
+const directIdlePollMs = 1_500;
+/** Bounds the follow loop even if the clock does not advance between passes. */
+const directIdleFollowLimit = Math.ceil(directIdlePatienceMs / directIdlePollMs);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * True when the newest stored turn is the operator's, so the agent still owes an answer.
+ */
+async function isAwaitingReply(deps: RunDeps, runId: string) {
+  const messages = await deps.store.listMessages(runId);
+  const conversational = messages.filter(
+    (message) => message.role === "user" || message.role === "assistant",
+  );
+
+  return conversational.at(-1)?.role === "user";
+}
+
 export type RelayFrame =
   | { type: "event"; event: AgentActivityEvent }
   | { type: "status"; status: RunStatus; usage: UsageSnapshot }
@@ -562,7 +896,7 @@ export async function* relayInvestigation(
 
   const startedAt = run.started_at ? Date.parse(run.started_at) : now();
   const deadlineMs = run.wallclock_limit_seconds * 1_000;
-  const cursor = await deps.store.eventCursor(run.id);
+  let cursor = await deps.store.eventCursor(run.id);
   let seq = cursor.nextSeq;
   let lastUsage: UsageSnapshot | null = null;
   let finalStatus: RunStatus = run.status;
@@ -572,73 +906,155 @@ export async function* relayInvestigation(
    * operator sees a bare failed run with no reason at all.
    */
   let lastErrorSummary: string | null = null;
+  /**
+   * The transcript must not gain the same reply twice. The event cursor already stops a
+   * reconnect from replaying stored events, but a relay that dies between writing the
+   * message and writing the event would otherwise leave the reply eligible again, so the
+   * last stored reply is compared before another is written.
+   */
+  let lastAssistantText =
+    [...(await deps.store.listMessages(run.id))]
+      .reverse()
+      .find((message) => message.role === "assistant")?.content ?? null;
+  /**
+   * Whether the agent still owes an answer to the newest question. The agent server
+   * reports an idle conversation the moment a turn is accepted but before its loop picks
+   * the message up, and its own stream ends on that idle status — so parking on the first
+   * idle report would leave the answer to be generated, and billed, with nobody relaying
+   * or storing it. The relay therefore follows the conversation again until the answer
+   * lands or `directIdlePatienceMs` of genuine idleness passes.
+   */
+  let awaitingReply = await isAwaitingReply(deps, run.id);
+  let idleSince: number | null = null;
+  /** Set when the agent reports idle; acted on once its stream has drained. */
+  let parkDirect = false;
+  let follows = 0;
 
   try {
-    for await (const frame of agent.streamActivity(run.agent_conversation_id, {
-      signal: input.signal,
-      deadlineMs,
-      since: cursor.since,
-      seenEventIds: cursor.seenEventIds,
-    })) {
-      if (frame.type === "event") {
-        if (isErrorEvent(frame.event) && frame.event.summary) {
-          lastErrorSummary = frame.event.summary.slice(0, 500);
+    following: while (true) {
+      for await (const frame of agent.streamActivity(run.agent_conversation_id, {
+        signal: input.signal,
+        deadlineMs: Math.max(deadlineMs - (now() - startedAt), 0),
+        since: cursor.since,
+        seenEventIds: cursor.seenEventIds,
+      })) {
+        if (frame.type === "event") {
+          if (isErrorEvent(frame.event) && frame.event.summary) {
+            lastErrorSummary = frame.event.summary.slice(0, 500);
+          }
+
+          if (
+            isAgentConclusion(frame.event) &&
+            frame.event.summary &&
+            frame.event.summary !== lastAssistantText
+          ) {
+            await deps.store.appendMessage(run.id, "assistant", frame.event.summary);
+            lastAssistantText = frame.event.summary;
+            awaitingReply = false;
+          }
+
+          await deps.store.appendEvents(run.id, [frame.event], seq);
+          seq += 1;
+          yield { type: "event", event: frame.event };
+          continue;
         }
 
-        if (isAgentConclusion(frame.event) && frame.event.summary) {
-          await deps.store.appendMessage(run.id, "assistant", frame.event.summary);
-        }
+        const snapshot = frame.snapshot;
+        const status = snapshot.status as RunStatus;
 
-        await deps.store.appendEvents(run.id, [frame.event], seq);
-        seq += 1;
-        yield { type: "event", event: frame.event };
-        continue;
-      }
+        finalStatus = status;
+        lastUsage = snapshot.usage;
 
-      const snapshot = frame.snapshot;
-      const status = snapshot.status as RunStatus;
-
-      finalStatus = status;
-      lastUsage = snapshot.usage;
-
-      const budget = evaluateRunBudget(deps.limits, {
-        usage: snapshot.usage,
-        startedAt,
-        now: now(),
-        monthToDateCostUsd: await deps.store.monthToDateCostUsd(),
-      });
-
-      if (frame.type === "deadline" || !budget.shouldContinue) {
-        const stopStatus = budget.shouldContinue
-          ? "timed_out"
-          : (statusForStopReason(budget.stopReason) as RunStatus);
-        const reason = budget.shouldContinue
-          ? `The ${deps.limits.runWallclockMinutes}-minute time limit for an investigation elapsed.`
-          : budget.reason;
-
-        await agent.cancel(run.agent_conversation_id);
-        await persistUsage(deps, run, snapshot.usage);
-        await deps.store.updateRunStatus(run.id, stopStatus, { failureReason: reason });
-        await destroyWorkspace(deps, run.id);
-        yield { type: "budget", status: stopStatus, reason };
-        yield { type: "end", status: stopStatus };
-        return;
-      }
-
-      if (status !== run.status) {
-        await deps.store.updateRunStatus(run.id, status, {
-          failureReason: failureReasonFor(status, lastErrorSummary),
+        const budget = evaluateRunBudget(deps.limits, {
+          usage: snapshot.usage,
+          startedAt,
+          now: now(),
+          monthToDateCostUsd: await deps.store.monthToDateCostUsd(),
         });
+
+        if (frame.type === "deadline" || !budget.shouldContinue) {
+          const stopStatus = budget.shouldContinue
+            ? "timed_out"
+            : (statusForStopReason(budget.stopReason) as RunStatus);
+          const reason = budget.shouldContinue
+            ? `The ${deps.limits.runWallclockMinutes}-minute time limit for an investigation elapsed.`
+            : budget.reason;
+
+          await agent.cancel(run.agent_conversation_id);
+          await persistUsage(deps, run, snapshot.usage);
+          await deps.store.updateRunStatus(run.id, stopStatus, { failureReason: reason });
+          await destroyWorkspace(deps, run.id);
+          yield { type: "budget", status: stopStatus, reason };
+          yield { type: "end", status: stopStatus };
+          return;
+        }
+
+        // A direct conversation that has answered is not finished: the agent is idle and
+        // listening, so the run parks in `paused` — shown as Ready — with its workspace
+        // alive until the operator finishes or stops it, or a limit ends it above. The
+        // agent writes its closing message just after reporting idle, so the park waits
+        // for its stream to drain rather than returning here.
+        if (run.source === "direct" && (status === "succeeded" || status === "paused")) {
+          parkDirect = true;
+          idleSince ??= now();
+          continue;
+        }
+
+        idleSince = null;
+
+        if (status !== run.status) {
+          await deps.store.updateRunStatus(run.id, status, {
+            failureReason: failureReasonFor(status, lastErrorSummary),
+          });
+        }
+
+        yield { type: "status", status, usage: snapshot.usage };
+
+        if (isTerminalStatus(snapshot.status)) {
+          await persistUsage(deps, run, snapshot.usage);
+          await destroyWorkspace(deps, run.id);
+          yield { type: "end", status };
+          return;
+        }
       }
 
-      yield { type: "status", status, usage: snapshot.usage };
-
-      if (isTerminalStatus(snapshot.status)) {
-        await persistUsage(deps, run, snapshot.usage);
-        await destroyWorkspace(deps, run.id);
-        yield { type: "end", status };
-        return;
+      if (!parkDirect) {
+        break following;
       }
+
+      awaitingReply = awaitingReply && (await isAwaitingReply(deps, run.id));
+      follows += 1;
+
+      if (
+        awaitingReply &&
+        follows <= directIdleFollowLimit &&
+        now() - (idleSince ?? now()) < directIdlePatienceMs
+      ) {
+        // The turn has been accepted but not answered yet: keep the operator on Running
+        // and follow the conversation from where this pass left off.
+        parkDirect = false;
+        cursor = await deps.store.eventCursor(run.id);
+        seq = cursor.nextSeq;
+        yield {
+          type: "status",
+          status: "running",
+          usage: lastUsage ?? (await deps.store.runUsage(run.id)),
+        };
+        await sleep(directIdlePollMs);
+        continue following;
+      }
+
+      if (lastUsage) {
+        await persistUsage(deps, run, lastUsage);
+      }
+
+      if (run.status !== "paused") {
+        await deps.store.updateRunStatus(run.id, "paused");
+      }
+
+      yield { type: "status", status: "paused", usage: lastUsage ?? (await deps.store.runUsage(run.id)) };
+      yield { type: "end", status: "paused" };
+      return;
     }
   } catch (error) {
     const agentError = error instanceof AgentServerError ? error : null;
@@ -870,6 +1286,14 @@ export async function publishReviewedFindings(
     return { ok: false, code: "run_not_found", reason: "That investigation does not exist." };
   }
 
+  if (run.source !== "support_request" || !run.support_request_id) {
+    return {
+      ok: false,
+      code: "run_not_found",
+      reason: "A direct conversation has no ticket to file findings on.",
+    };
+  }
+
   if (!run.findings?.trim()) {
     return {
       ok: false,
@@ -893,16 +1317,17 @@ export async function publishReviewedFindings(
     model: run.model,
   });
 
+  const supportRequestId = run.support_request_id;
   const { created } = await deps.store.publishFindingsNote({
     runId: run.id,
-    supportRequestId: run.support_request_id,
+    supportRequestId,
     body: note.body,
   });
 
   await deps.store.recordToolAction({
     runId: run.id,
     tool: "support.internal_note",
-    target: run.support_request_id,
+    target: supportRequestId,
     isWrite: true,
     outcome: created ? "succeeded" : "denied",
     request: { actorUserId: input.actorUserId, reviewed: true },
@@ -923,17 +1348,18 @@ export async function isRunContextStale(deps: RunDeps, run: RunRow) {
   const captured = (run.sanitized_context as { freshness?: ContextFreshness } | null)
     ?.freshness;
 
-  if (!captured?.lastMessageAt) {
+  if (!captured?.lastMessageAt || !run.support_request_id) {
     return false;
   }
 
-  const request = await deps.store.getSupportRequest(run.support_request_id);
+  const supportRequestId = run.support_request_id;
+  const request = await deps.store.getSupportRequest(supportRequestId);
 
   if (!request) {
     return false;
   }
 
-  const { messages } = await deps.store.getSupportConversation(run.support_request_id);
+  const { messages } = await deps.store.getSupportConversation(supportRequestId);
   // Compare the newest slice of the same size the run read, so messages it deliberately
   // dropped for its size bound are not mistaken for new activity.
   const recentMessageIds = messages

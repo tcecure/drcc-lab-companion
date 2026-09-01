@@ -63,6 +63,9 @@ export default async function InvestigationPage({
   ]);
   const context = (run.sanitized_context ?? {}) as SanitizedContext;
   const active = isActiveStatus(run.status);
+  const supportRequestId = run.support_request_id;
+  // A direct conversation has no ticket, so nothing here may offer a ticket action.
+  const fromTicket = run.source === "support_request" && supportRequestId !== null;
 
   return (
     <AppShell roles={roles} title={run.title}>
@@ -97,12 +100,15 @@ export default async function InvestigationPage({
           <Link className="button secondary" href="/admin/labops">
             Back to console
           </Link>
-          <Link
-            className="button secondary"
-            href={`/admin/support/${run.support_request_id}`}
-          >
-            Source ticket: {run.support_request_id.slice(0, 8)}
-          </Link>
+          {fromTicket ? (
+            <Link className="button secondary" href={`/admin/support/${supportRequestId}`}>
+              Source ticket: {supportRequestId.slice(0, 8)}
+            </Link>
+          ) : (
+            <Link className="button secondary" href={`/admin/labops/chat?c=${run.id}`}>
+              Open in Direct Chat
+            </Link>
+          )}
           {active && operator.ok ? <CancelInvestigationButton runId={run.id} /> : null}
         </div>
       </Card>
@@ -118,6 +124,7 @@ export default async function InvestigationPage({
         </Card>
       ) : null}
 
+      {fromTicket ? (
       <Card eyebrow="Sent to the model" title="Sanitized ticket context">
         <p className="text-sm text-slate-400">
           Pod {context.podLabel ?? "unknown"} — no student name or email leaves the portal, and
@@ -136,6 +143,7 @@ export default async function InvestigationPage({
           </p>
         ) : null}
       </Card>
+      ) : null}
 
       {approvals.length > 0 ? (
         <Card eyebrow="Confirmation gate" title="Approval requests">
@@ -237,7 +245,7 @@ export default async function InvestigationPage({
         </div>
       </Card>
 
-      {operator.ok ? (
+      {operator.ok && fromTicket ? (
         <Card eyebrow="Outcome" title="Findings and resolution">
           <ResolutionForm findings={run.findings} resolution={run.resolution} runId={run.id} />
           {run.findings ? (
@@ -251,7 +259,7 @@ export default async function InvestigationPage({
             </div>
           ) : null}
         </Card>
-      ) : run.findings || run.resolution ? (
+      ) : fromTicket && (run.findings || run.resolution) ? (
         <Card eyebrow="Outcome" title="Findings and resolution">
           <pre className="whitespace-pre-wrap text-sm text-slate-300">{run.findings}</pre>
           <pre className="mt-3 whitespace-pre-wrap text-sm text-slate-300">{run.resolution}</pre>

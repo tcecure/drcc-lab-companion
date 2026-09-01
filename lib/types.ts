@@ -1521,7 +1521,9 @@ export type Database = {
       ai_runs: {
         Row: {
           id: string;
-          support_request_id: string;
+          /** Null for a direct conversation; always set for a ticket investigation. */
+          support_request_id: string | null;
+          source: "support_request" | "direct";
           requested_by: string;
           status:
             | "queued"
@@ -1552,7 +1554,8 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          support_request_id: string;
+          support_request_id?: string | null;
+          source?: Database["public"]["Tables"]["ai_runs"]["Row"]["source"];
           requested_by: string;
           status?: Database["public"]["Tables"]["ai_runs"]["Row"]["status"];
           title: string;

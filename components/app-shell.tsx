@@ -14,6 +14,7 @@ import {
   LogOut,
   Mail,
   MessageSquareText,
+  Sparkles,
   Server,
   ShieldCheck,
   User,
@@ -55,6 +56,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/guides", icon: BookOpen, label: "Current Lab Guides" },
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
   { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
+  { href: "/admin/labops/chat", icon: Sparkles, label: "Ask LabOps AI" },
   {
     href: "/admin/labops/approvals",
     icon: ClipboardCheck,

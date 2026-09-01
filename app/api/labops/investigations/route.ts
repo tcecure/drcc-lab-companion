@@ -3,20 +3,38 @@ import { z } from "zod";
 
 import { runDeps } from "@/lib/labops/gateway";
 import { failureResponse, guard, isUuid, jsonError } from "@/lib/labops/http";
-import { startInvestigation, type StartFailureCode } from "@/lib/labops/runs";
+import {
+  directPromptMaxLength,
+  startDirectConversation,
+  startInvestigation,
+  type DirectPromptFailureCode,
+  type StartFailureCode,
+} from "@/lib/labops/runs";
 import { labopsStore, summarizeRun } from "@/lib/labops/store";
 
 export const dynamic = "force-dynamic";
 
-const startSchema = z.object({
-  supportRequestId: z.string().refine(isUuid),
-});
+/**
+ * Backward compatible on purpose: a body with only `supportRequestId` is still a ticket
+ * investigation, so nothing that already calls this route has to change.
+ */
+const startSchema = z.union([
+  z.object({
+    source: z.literal("support_request").optional(),
+    supportRequestId: z.string().refine(isUuid),
+  }),
+  z.object({
+    source: z.literal("direct"),
+    prompt: z.string().trim().min(1).max(directPromptMaxLength),
+  }),
+]);
 
-const statusForCode: Record<StartFailureCode, number> = {
+const statusForCode: Record<StartFailureCode | DirectPromptFailureCode, number> = {
   request_not_found: 404,
   request_ineligible: 422,
   limit_reached: 409,
   agent_unavailable: 502,
+  prompt_invalid: 400,
 };
 
 /** Investigation history. Any staff account may read it; only the operator may start one. */
@@ -56,16 +74,22 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return jsonError(
       400,
-      "supportRequestId must be the UUID of a support request.",
+      `Send either the UUID of a support request, or a direct question of up to ${directPromptMaxLength.toLocaleString()} characters.`,
       { code: "invalid_request" },
     );
   }
 
   try {
-    const result = await startInvestigation(runDeps(), {
-      identity: gate.identity,
-      supportRequestId: parsed.data.supportRequestId,
-    });
+    const result =
+      parsed.data.source === "direct"
+        ? await startDirectConversation(runDeps(), {
+            identity: gate.identity,
+            prompt: parsed.data.prompt,
+          })
+        : await startInvestigation(runDeps(), {
+            identity: gate.identity,
+            supportRequestId: parsed.data.supportRequestId,
+          });
 
     if (!result.ok) {
       return jsonError(statusForCode[result.code], result.reason, { code: result.code });

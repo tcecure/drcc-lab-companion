@@ -13,6 +13,9 @@ import {
   reconcileInvestigations,
   relayInvestigation,
   startInvestigation,
+  startDirectConversation,
+  sendDirectMessage,
+  finishDirectConversation,
   type AgentPort,
   type RelayFrame,
   type RunDeps,
@@ -68,6 +71,7 @@ function runRow(overrides: Partial<RunRow> = {}): RunRow {
   return {
     id: "run-1",
     support_request_id: supportRequest().id,
+    source: "support_request",
     requested_by: owner.userId,
     status: "queued",
     title: "Cannot reach the pod firewall (connectivity)",
@@ -157,8 +161,20 @@ function stubStore(state: StubState): LabOpsStore {
       return state.monthCost;
     },
     async createRun(input) {
-      state.run = runRow({ title: input.title, sanitized_context: { subject: input.brief.subject } });
+      state.run = runRow({
+        source: input.source,
+        support_request_id: input.supportRequestId,
+        title: input.title,
+        sanitized_context: input.sanitizedContext,
+      });
       return state.run;
+    },
+    async listRunPage({ limit = 20, offset = 0, source } = {}) {
+      const rows = (state.run ? [state.run] : []).filter(
+        (row) => !source || row.source === source,
+      );
+
+      return { runs: rows.slice(offset, offset + limit), hasMore: rows.length > offset + limit };
     },
     async attachConversation(_runId, conversationId) {
       state.run = { ...(state.run ?? runRow()), agent_conversation_id: conversationId };
@@ -186,7 +202,13 @@ function stubStore(state: StubState): LabOpsStore {
       return [];
     },
     async listMessages() {
-      return [];
+      return state.messages.map((message, index) => ({
+        id: index + 1,
+        run_id: state.run?.id ?? "run-1",
+        role: message.role as "system" | "user" | "assistant" | "tool",
+        content: message.content,
+        created_at: "2026-08-25T00:01:00.000Z",
+      }));
     },
     async listToolActions() {
       return [];
@@ -318,6 +340,7 @@ function stubAgent(overrides: Partial<AgentPort> = {}): AgentPort {
       return { stopped: true };
     },
     async respondToConfirmation() {},
+    async sendMessage() {},
     async getConversation() {
       return snapshot("running", usage(0, 0, 0));
     },
@@ -1242,5 +1265,361 @@ describe("resuming a relay and describing a held step", () => {
     expect(pendingStepSummary([{ kind: "ActionEvent", payload: { toolName: "terminal" } }])).toBe(
       "terminal",
     );
+  });
+});
+
+describe("direct chat", () => {
+  it("starts a conversation with no ticket behind it", async () => {
+    const prompts: string[] = [];
+    const agent = stubAgent({
+      async createConversation(input) {
+        prompts.push(input.initialMessage ?? "");
+        return snapshot("running", usage(0, 0, 0));
+      },
+    });
+
+    const result = await startDirectConversation(deps(state, agent), {
+      identity: owner,
+      prompt: "Why did the SC M4-L1 verifier fail on Pod03?\nIt passed yesterday.",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(state.run?.source).toBe("direct");
+    expect(state.run?.support_request_id).toBeNull();
+    expect(state.run?.title).toBe("Why did the SC M4-L1 verifier fail on Pod03?");
+    expect(prompts[0]).toContain("Why did the SC M4-L1 verifier fail on Pod03?");
+    // Only what the operator typed is kept as theirs; the framing is not their words.
+    expect(state.messages[0]).toEqual({
+      role: "user",
+      content: "Why did the SC M4-L1 verifier fail on Pod03?\nIt passed yesterday.",
+    });
+  });
+
+  it("redacts a secret pasted into the question before the agent sees it", async () => {
+    const prompts: string[] = [];
+    const agent = stubAgent({
+      async createConversation(input) {
+        prompts.push(input.initialMessage ?? "");
+        return snapshot("running", usage(0, 0, 0));
+      },
+    });
+
+    await startDirectConversation(deps(state, agent), {
+      identity: owner,
+      prompt: "The pod admin password is Hunter2Hunter2! — is that why the join fails?",
+    });
+
+    expect(prompts[0]).not.toContain("Hunter2Hunter2!");
+    expect(state.messages[0]?.content).not.toContain("Hunter2Hunter2!");
+  });
+
+  it("refuses an empty question and a second concurrent conversation", async () => {
+    expect(
+      await startDirectConversation(deps(state), { identity: owner, prompt: "   " }),
+    ).toMatchObject({ ok: false, code: "prompt_invalid" });
+
+    state.activeRuns = 1;
+
+    expect(
+      await startDirectConversation(deps(state), { identity: owner, prompt: "Anything?" }),
+    ).toMatchObject({ ok: false, code: "limit_reached" });
+  });
+
+  it("continues the same conversation on a follow-up", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "paused",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const sent: Array<{ conversationId: string; text: string; run?: boolean }> = [];
+    const agent = stubAgent({
+      async sendMessage(conversationId, text, options) {
+        sent.push({ conversationId, text, run: options?.run });
+      },
+      async createConversation() {
+        throw new Error("a follow-up must not create another conversation");
+      },
+    });
+
+    const result = await sendDirectMessage(deps(state, agent), {
+      identity: owner,
+      runId: "run-1",
+      prompt: "What should I check first?",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(sent).toEqual([
+      { conversationId: "conv-1", text: "What should I check first?", run: true },
+    ]);
+    expect(state.messages.at(-1)).toEqual({
+      role: "user",
+      content: "What should I check first?",
+    });
+    expect(state.statusUpdates.at(-1)?.status).toBe("running");
+  });
+
+  it("refuses a follow-up unless the conversation is direct and ready", async () => {
+    state.run = runRow({ status: "running", agent_conversation_id: "conv-1" });
+
+    expect(
+      await sendDirectMessage(deps(state), { identity: owner, runId: "run-1", prompt: "hi" }),
+    ).toMatchObject({ ok: false, code: "not_direct" });
+
+    for (const status of ["running", "awaiting_approval", "succeeded", "cancelled"] as const) {
+      state.run = runRow({
+        source: "direct",
+        support_request_id: null,
+        status,
+        agent_conversation_id: "conv-1",
+      });
+
+      expect(
+        await sendDirectMessage(deps(state), { identity: owner, runId: "run-1", prompt: "hi" }),
+      ).toMatchObject({ ok: false, code: "not_ready" });
+    }
+
+    state.run = null;
+
+    expect(
+      await sendDirectMessage(deps(state), { identity: owner, runId: "run-1", prompt: "hi" }),
+    ).toMatchObject({ ok: false, code: "run_not_found" });
+  });
+
+  it("ends a follow-up that would exceed the budget, destroying the workspace", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "paused",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+    state.recordedUsage = usage(0, 0, limits.runCostBudgetUsd);
+
+    const result = await sendDirectMessage(deps(state), {
+      identity: owner,
+      runId: "run-1",
+      prompt: "One more thing",
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "limit_reached" });
+    expect(state.statusUpdates.at(-1)?.status).toBe("budget_exhausted");
+  });
+
+  it("finishes a direct conversation and destroys its container", async () => {
+    const runtime = stubRuntime();
+    const handle = await runtime.start("run-1");
+
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "paused",
+      agent_conversation_id: "conv-1",
+    });
+
+    const runDeps = perRunDeps(state, { runtime });
+    const result = await finishDirectConversation(runDeps, { identity: owner, runId: "run-1" });
+
+    expect(result.ok).toBe(true);
+    expect(state.statusUpdates.at(-1)?.status).toBe("succeeded");
+    expect(await runtime.inspect(handle.runId)).toBeNull();
+    expect(state.destroyedWorkspaceRows).toContain("run-1");
+  });
+
+  it("refuses to finish a ticket investigation or an ended conversation", async () => {
+    state.run = runRow({ status: "paused" });
+
+    expect(
+      await finishDirectConversation(deps(state), { identity: owner, runId: "run-1" }),
+    ).toMatchObject({ ok: false, code: "not_direct" });
+
+    state.run = runRow({ source: "direct", support_request_id: null, status: "succeeded" });
+
+    expect(
+      await finishDirectConversation(deps(state), { identity: owner, runId: "run-1" }),
+    ).toMatchObject({ ok: false, code: "already_terminal" });
+  });
+
+  it("parks a direct run at Ready instead of ending it when the agent stops working", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    const handle = await runtime.start("run-1");
+    const agent = stubAgent({
+      async *streamActivity() {
+        yield {
+          type: "event" as const,
+          event: {
+            id: "evt-answer",
+            kind: "MessageEvent",
+            source: "agent",
+            timestamp: "2026-08-25T00:01:30.000Z",
+            summary: "The seed job never ran on Pod03.",
+            toolName: null,
+            redacted: false,
+          },
+        };
+        yield { type: "status" as const, snapshot: snapshot("succeeded", usage(20, 10, 0.02)) };
+      },
+    });
+
+    const frames = await collect(
+      relayInvestigation(perRunDeps(state, { runtime, agentFor: () => agent }), {
+        runId: "run-1",
+      }),
+    );
+
+    expect(frames.at(-1)).toMatchObject({ type: "end", status: "paused" });
+    expect(state.statusUpdates.at(-1)?.status).toBe("paused");
+    // Ready keeps the conversation alive: the workspace must still be there.
+    expect(await runtime.inspect(handle.runId)).not.toBeNull();
+    expect(state.messages).toEqual([
+      { role: "assistant", content: "The seed job never ran on Pod03." },
+    ]);
+  });
+
+  it("keeps following a follow-up the agent has not answered yet", async () => {
+    // The agent server reports an idle conversation between accepting a follow-up and its
+    // loop picking the message up, and ends its own stream there. Parking on that first
+    // idle report loses the answer that is generated, and billed, immediately after.
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+    state.messages = [
+      { role: "user", content: "What broke on Pod03?" },
+      { role: "assistant", content: "The seed job never ran on Pod03." },
+      { role: "user", content: "Thanks. In one sentence, what is that hostname?" },
+    ];
+
+    const runtime = stubRuntime();
+    const handle = await runtime.start("run-1");
+    let pass = 0;
+    const agent = stubAgent({
+      async *streamActivity() {
+        pass += 1;
+
+        if (pass === 1) {
+          // Accepted but not started: nothing but an idle report.
+          yield { type: "status" as const, snapshot: snapshot("paused", usage(40, 10, 0.03)) };
+          return;
+        }
+
+        yield {
+          type: "event" as const,
+          event: {
+            id: "evt-followup",
+            kind: "MessageEvent",
+            source: "agent",
+            timestamp: "2026-08-25T00:01:45.000Z",
+            summary: "The hostname is labops-inv-run-1.",
+            toolName: null,
+            redacted: false,
+          },
+        };
+        yield { type: "status" as const, snapshot: snapshot("paused", usage(60, 20, 0.05)) };
+      },
+    });
+
+    const frames = await collect(
+      relayInvestigation(perRunDeps(state, { runtime, agentFor: () => agent }), {
+        runId: "run-1",
+      }),
+    );
+
+    expect(pass).toBe(2);
+    expect(state.messages.at(-1)).toEqual({
+      role: "assistant",
+      content: "The hostname is labops-inv-run-1.",
+    });
+    expect(frames.map((frame) => frame.type)).toContain("event");
+    expect(frames.at(-1)).toMatchObject({ type: "end", status: "paused" });
+    // The operator stays on Running while the answer is still owed.
+    expect(frames.some((frame) => frame.type === "status" && frame.status === "running")).toBe(true);
+    expect(await runtime.inspect(handle.runId)).not.toBeNull();
+  });
+
+  it("parks a direct conversation whose answer already landed without another pass", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+    state.messages = [
+      { role: "user", content: "What broke on Pod03?" },
+      { role: "assistant", content: "The seed job never ran on Pod03." },
+    ];
+
+    let pass = 0;
+    const agent = stubAgent({
+      async *streamActivity() {
+        pass += 1;
+        yield { type: "status" as const, snapshot: snapshot("paused", usage(40, 10, 0.03)) };
+      },
+    });
+
+    const frames = await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    expect(pass).toBe(1);
+    expect(frames.at(-1)).toMatchObject({ type: "end", status: "paused" });
+  });
+
+  it("stores the same answer once across a relay reconnect", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const answer = {
+      id: "evt-answer",
+      kind: "MessageEvent",
+      source: "agent",
+      timestamp: "2026-08-25T00:01:30.000Z",
+      summary: "Reseed M4-L1 and re-run the verifier.",
+      toolName: null,
+      redacted: false,
+    };
+    const agent = stubAgent({
+      async *streamActivity() {
+        yield { type: "event" as const, event: answer };
+        yield { type: "status" as const, snapshot: snapshot("paused", usage(20, 10, 0.02)) };
+      },
+    });
+
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    expect(state.messages.filter((message) => message.role === "assistant")).toHaveLength(1);
+  });
+
+  it("never offers the ticket findings note on a direct conversation", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "succeeded",
+      findings: "The seed job never ran.",
+    });
+    state.writeSwitches.support_notes = true;
+
+    expect(
+      await publishReviewedFindings(deps(state), { runId: "run-1", actorUserId: owner.userId }),
+    ).toMatchObject({ ok: false });
+    expect(state.findingsNotes).toHaveLength(0);
   });
 });

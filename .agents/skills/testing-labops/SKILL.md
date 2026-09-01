@@ -188,3 +188,76 @@ To test "staff but not owner" you do not need another login: restart the harness
 `LABOPS_OWNER_EMAIL=nobody-owner@digitalrcc.test` and keep the existing staff session. The intake
 row must then read "Operator only" with no Investigate control, GETs stay 200, and
 start/cancel/findings-note/PATCH must all return `403 {"code":"forbidden"}`.
+
+## Driving Direct Chat on production (owner session supplied by the user)
+
+The owner (`eddie.barlow@tcecure.com`) may sign into the shared Chrome for you. That session is
+**not reproducible by you** — never log out, never clear cookies, and never test anonymous
+denials in that browser. Do anonymous checks with `curl` in a separate shell instead (no copied
+cookies), which is also the only honest way to prove server-side denial.
+
+Read-only host observation (all of these need `sudo -n`; `labadm` has passwordless sudo and the
+login user is *not* in the `docker` group, so a bare `docker ps` fails with a socket permission
+error):
+
+```bash
+ssh labops 'sudo -n docker ps --filter label=labops.role=investigation --format "{{.Names}} {{.State}}"'
+ssh labops 'sudo -n docker volume ls --format "{{.Name}}" | grep labops-inv'
+```
+
+Per-run container **and** volume are both named `labops-inv-<run_id>` and the container hostname
+is `inv-<first 8 chars of run_id>`. Asking the agent to run `hostname` and comparing the answer to
+that value is a cheap, high-value proof that the answer came from the real isolated workspace and a
+real provider rather than a canned string.
+
+Service-role DB reads without leaving credentials on your box:
+
+```bash
+ssh labops 'set -a; sudo -n cat /etc/labops/gateway.env > /tmp/.ge; . /tmp/.ge; set +a; rm -f /tmp/.ge; \
+  curl -s -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/ai_runs?select=id,source,support_request_id,status"'
+```
+
+Column names that have burned time: `ai_write_switches` keys on **`scope`** (not `switch_name`);
+`ai_messages` is `(id, run_id, role, content, created_at)` with **no `seq`**; runs end with
+`ended_at` (not `finished_at`).
+
+Things to assert that are easy to miss, and known trouble spots:
+
+- A direct run must persist `source='direct'` **and** `support_request_id=null`. Capture the run id
+  from the `?c=<uuid>` URL and match it to the container name.
+- **Watch for a stalled first render.** A direct run was once seen sitting on "Running" /
+  "LabOps AI is working…" with no activity and no confirmation panel while the agent server was
+  already at `waiting_for_confirmation`, recovering only on a manual reload: the browser never
+  opened the activity stream, because the effect that opens it ignored the status change that
+  starting a conversation causes. Fixed, and still worth re-checking — the operator must never have
+  to reload to see a pending confirmation. If the UI looks stuck, reload, then report the stall.
+- **Verify the follow-up ANSWER is persisted, not just accepted.** `POST .../messages` returning 202
+  and a new `ai_model_usage` row only prove the provider was billed. Confirm an `assistant` row
+  actually lands in `ai_messages` and survives a reload. A billed-but-lost follow-up answer was
+  observed on production: the agent server reports an *idle* conversation in the gap between
+  accepting a turn and its loop starting, and the relay used to park the run at Ready on that
+  report, so the answer arrived with nobody storing it. The relay now keeps following an idle
+  conversation while the newest stored turn is still the operator's.
+- Finish must yield `status='succeeded'` and Stop `status='cancelled'`, and in both cases the
+  container **and** volume must be gone from `docker ps -a` / `docker volume ls` — not merely stopped.
+- Usage lands in `ai_model_usage` per provider call; the UI tiles show the aggregate, so compare the
+  sum of `cost_usd` against "Estimated cost", not a single row.
+
+## Agent-image branding in the staff audit UI
+
+`ai_tool_actions.response_summary` for `runtime.workspace.create` used to be stored as
+"Isolated workspace created on ghcr.io/openhands/agent-server:<tag>@sha256:…", which
+`/admin/labops/<run>` renders verbatim in its "Tool actions" table. New runs store
+"Isolated workspace created on the pinned agent image (sha256:<12 hex>)" instead, with the full
+reference kept only in `ai_run_workspaces`, which nothing renders. Rows written before that change
+still carry the old string, so a scan of historical runs is expected to hit it.
+
+The Direct Chat page itself does not render tool actions, so a page-HTML-only sweep reports a false
+clean; scan the persisted rows and the run **detail** page too.
+
+## Not yet exercised on production
+
+Carried forward so the next run can close these: non-owner/student denial with a second real
+identity, **Refuse** inside a direct conversation, a hostile-Markdown link in a live answer, and a
+leak scan of the gateway journal (`ssh labops 'sudo -n journalctl -u labops-gateway --since …'`).
