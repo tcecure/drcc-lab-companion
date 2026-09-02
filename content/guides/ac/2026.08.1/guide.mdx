@@ -331,7 +331,7 @@ Get-ChildItem "{{artifactsPath}}Lab4-3"
 
 - Refresh ADUC after making a change before deciding it did not persist.
 - Check the exact OU, group name, filename, and artifact path when the tracker does not recognize a completed task.
-- Run PowerShell commands on your assigned domain controller.
+- Run PowerShell commands on `{{sessionHost}}`; the AD module there works against the domain, so you never sign in to a domain controller.
 - Use the portal's Support page if a lab service is unavailable or the expected pod objects are missing.
 
 </GuideSection>
