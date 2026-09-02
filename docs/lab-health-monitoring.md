@@ -84,8 +84,8 @@ Pod components (all `qemu` on `pve1`, all running):
 
 | Pod   | Gateway (VMID) | Member server (VMID) |
 | ----- | -------------- | -------------------- |
-| Pod01 | Pod01-GW (300) | —                    |
-| Pod02 | Pod02-GW (301) | —                    |
+| Pod01 | Pod01-GW (300) | POD01-SRV (401)      |
+| Pod02 | Pod02-GW (301) | POD02-SRV (402)      |
 | Pod03 | Pod03-GW (302) | POD03-SRV (403)      |
 | Pod04 | Pod04-GW (303) | POD04-SRV (404)      |
 | Pod05 | Pod05-GW (304) | POD05-SRV (405)      |
@@ -99,14 +99,15 @@ Pod components (all `qemu` on `pve1`, all running):
 | Pod13 | Pod13-GW (312) | POD13-SRV (413)      |
 | Pod14 | Pod14-GW (313) | POD14-SRV (414)      |
 | Pod15 | Pod15-GW (314) | POD15-SRV (415)      |
-| Pod16 | Pod16-GW (315) | —                    |
-| Pod17 | Pod17-GW (316) | —                    |
-| Pod18 | Pod18-GW (317) | —                    |
-| Pod19 | Pod19-GW (318) | —                    |
-| Pod20 | Pod20-GW (319) | —                    |
+| Pod16 | Pod16-GW (315) | POD16-SRV (416)      |
+| Pod17 | Pod17-GW (316) | POD17-SRV (417)      |
+| Pod18 | Pod18-GW (317) | POD18-SRV (418)      |
+| Pod19 | Pod19-GW (318) | POD19-SRV (419)      |
+| Pod20 | Pod20-GW (319) | POD20-SRV (420)      |
 
-Pods 01–02 and 16–20 have no member server yet; add them to
-`PROXMOX_EXPECTED_PODS` when they are built, or the card turns yellow.
+All 20 pods now have a member server, so every pod entry in
+`PROXMOX_EXPECTED_PODS` lists both the gateway and the server, or the card turns
+yellow.
 
 TLS: pve1 serves the Proxmox cluster CA certificate
 (`CN=pve1.cyberlab.tcecure.com`, valid to 2027-09-20), which is self-signed from
@@ -130,7 +131,7 @@ for a loopback base URL when the poller runs on pve1 itself.
 ```
 PROXMOX_CORE_DC_RESOURCES=DC01,DC02
 PROXMOX_EXPECTED_NODES=pve1
-PROXMOX_EXPECTED_PODS=Pod01=Pod01-GW;Pod02=Pod02-GW;Pod03=Pod03-GW,POD03-SRV;...;Pod20=Pod20-GW
+PROXMOX_EXPECTED_PODS=Pod01=Pod01-GW,POD01-SRV;Pod02=Pod02-GW,POD02-SRV;Pod03=Pod03-GW,POD03-SRV;Pod04=Pod04-GW,POD04-SRV;Pod05=Pod05-GW,POD05-SRV;Pod06=Pod06-GW,POD06-SRV;Pod07=Pod07-GW,POD07-SRV;Pod08=Pod08-GW,POD08-SRV;Pod09=Pod09-GW,POD09-SRV;Pod10=Pod10-GW,POD10-SRV;Pod11=Pod11-GW,POD11-SRV;Pod12=Pod12-GW,POD12-SRV;Pod13=Pod13-GW,POD13-SRV;Pod14=Pod14-GW,POD14-SRV;Pod15=Pod15-GW,POD15-SRV;Pod16=Pod16-GW,POD16-SRV;Pod17=Pod17-GW,POD17-SRV;Pod18=Pod18-GW,POD18-SRV;Pod19=Pod19-GW,POD19-SRV;Pod20=Pod20-GW,POD20-SRV
 LAB_STATUS_MAX_AGE_SECONDS=180
 LAB_STATUS_INGEST_SECRET=<shared with the poller only>
 ```
