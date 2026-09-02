@@ -2,9 +2,17 @@ import Link from "next/link";
 
 import { BrandLogo } from "@/components/brand-logo";
 
-export function PublicHeader() {
+export function PublicHeader({
+  variant = "default",
+}: {
+  variant?: "default" | "home";
+}) {
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-200/15 bg-slate-950/85 backdrop-blur-xl">
+    <header
+      className={`public-header sticky top-0 z-50 border-b border-cyan-200/15 bg-slate-950/85 backdrop-blur-xl ${
+        variant === "home" ? "public-header-home" : ""
+      }`}
+    >
       <div className="mx-auto flex min-h-18 w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link className="flex items-center gap-3" href="/">
           <BrandLogo />

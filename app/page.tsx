@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, LifeBuoy, LogIn } from "lucide-react";
 import { Suspense } from "react";
@@ -20,19 +21,37 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <>
-      <PublicHeader />
-      <main>
-        <section className="border-b border-cyan-100/10">
-          <div className="mx-auto w-full max-w-6xl px-4 pb-8 pt-10 sm:px-6 sm:pb-14 sm:pt-18">
-            <div className="max-w-4xl">
-              <h1 className="max-w-3xl text-4xl font-bold leading-tight sm:text-6xl">
-                DigitalRCC Lab Companion
-              </h1>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+      <PublicHeader variant="home" />
+      <main className="home-page">
+        <section className="home-hero">
+          <div className="home-hero-inner">
+            <div className="home-hero-copy">
+              <h1 className="home-hero-title">DigitalRCC Lab Companion</h1>
+              <p className="home-hero-summary">
                 Enter your assigned pod, follow the current CMMC Level 1 lab
                 guides, and pick up where your training left off.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
+            </div>
+
+            <div aria-hidden="true" className="home-logo-stage">
+              <div className="home-logo-orbit">
+                <span className="home-logo-orbit-marker">
+                  <span />
+                </span>
+                <Image
+                  alt=""
+                  className="home-hero-logo"
+                  height={420}
+                  priority
+                  sizes="(max-width: 640px) 220px, 300px"
+                  src="/brand/drcc-logo.png"
+                  width={420}
+                />
+              </div>
+            </div>
+
+            <div className="home-hero-actions">
+              <div className="flex flex-wrap justify-center gap-3">
                 <Link className="button" href="/login">
                   <LogIn aria-hidden="true" size={17} />
                   Log in
@@ -51,7 +70,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mt-8 sm:mt-12">
+            <div className="home-operations-wrap">
               <Suspense fallback={<HomeOperationsFallback />}>
                 <OperationsSummary />
               </Suspense>
@@ -59,7 +78,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-14">
+        <section className="home-notices-shell">
           <KnownIssuesSummary />
         </section>
       </main>
