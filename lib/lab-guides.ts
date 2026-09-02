@@ -1,4 +1,4 @@
-export type LabGuideWorkspace = "dc" | "firewall" | "pod";
+export type LabGuideWorkspace = "server" | "firewall" | "pod";
 
 export const labGuides = [
   {
@@ -11,7 +11,7 @@ export const labGuides = [
     guidePath: "/guides/ac-lab-completion-guide.pdf",
     labCount: 12,
     pageCount: 17,
-    workspace: "dc",
+    workspace: "server",
   },
   {
     code: "IA",
@@ -21,7 +21,7 @@ export const labGuides = [
     guidePath: "/guides/ia-lab-completion-guide.pdf",
     labCount: 12,
     pageCount: 22,
-    workspace: "dc",
+    workspace: "server",
   },
   {
     code: "SI",
@@ -31,7 +31,7 @@ export const labGuides = [
     guidePath: "/guides/si-lab-completion-guide.pdf",
     labCount: 12,
     pageCount: 27,
-    workspace: "dc",
+    workspace: "server",
   },
   {
     code: "SC",

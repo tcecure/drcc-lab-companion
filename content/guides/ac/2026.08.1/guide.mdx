@@ -27,11 +27,14 @@ Open [Guacamole](https://crc.guac.01.tcecure.com/#/) and sign in with the creden
 <dl className="guide-fields">
   <GuideField label="Student" value="Student {{studentNumber}}" />
   <GuideField label="Username" value="{{labUsername}}" />
-  <GuideField label="Connection" value="{{domainController}}" />
+  <GuideField label="Connection" value="{{sessionHost}}" />
   <GuideField label="Domain" value="{{domainName}}" />
 </dl>
 
-1. Open the Guacamole connection named `{{domainController}}`.
+1. Open the Guacamole connection named `{{sessionHost}}`. This is your own
+   domain-joined server; you administer Active Directory from it with the
+   management tools installed there, and you never sign in to a domain
+   controller.
 2. Wait for the Windows desktop to load fully.
 3. Use **Ctrl + Alt + Shift** to open the Guacamole side panel. Select **Home** when you need to leave the connection.
 
@@ -219,7 +222,7 @@ Complete the access review and store evidence in your assigned artifact folders.
 
 <GuideLab id="L4.2" title="Export an access review" objective="Create nonempty evidence of enabled accounts and group membership.">
 
-Open PowerShell on `{{domainController}}` and export the enabled-user review to the exact Lab4-2 folder.
+Open PowerShell on `{{sessionHost}}` and export the enabled-user review to the exact Lab4-2 folder.
 
 ```powershell
 Get-ADUser -Filter {Enabled -eq $true} -SearchBase "OU={{podName}},OU=Students,DC=acs-p01,DC=local" -Properties MemberOf |
@@ -318,7 +321,8 @@ Get-ChildItem "{{artifactsPath}}Lab4-3"
 | Student            | Student `{{studentNumber}}` |
 | Pod                | `{{podName}}`               |
 | Guacamole username | `{{labUsername}}`           |
-| Domain controller  | `{{domainController}}`      |
+| Your server        | `{{sessionHost}}`           |
+| Domain controllers | `{{domainControllers}}`     |
 | Domain             | `{{domainName}}`            |
 | Account prefix     | `{{podPrefix}}`             |
 | Artifact root      | `{{artifactsPath}}`         |

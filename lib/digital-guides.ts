@@ -46,7 +46,12 @@ export function replaceGuideTokens(
 ) {
   const values: Record<string, string> = {
     artifactsPath: identity?.artifactsPath ?? "C:\\CyberLab\\PodXX\\",
-    domainController: identity?.domainController ?? "PODXX-DC",
+    sessionHost: identity?.sessionHost ?? "PODXX-SRV",
+    sessionHostAddress: identity?.sessionHostAddress ?? "10.50.XX.20",
+    domainControllers: (identity?.domainControllers ?? [
+      "DC01-P01",
+      "DC02-P01",
+    ]).join(" and "),
     domainName: identity?.domainName ?? "acs-p01.local",
     gatewayAddress: identity?.gatewayAddress ?? "10.51.XX.1",
     guacamoleUrl:

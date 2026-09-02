@@ -61,8 +61,8 @@ export default async function GuidesPage() {
           const digitalGuide =
             "digitalGuidePath" in family ? family.digitalGuidePath : null;
           const workspace = identity
-            ? family.workspace === "dc"
-              ? identity.domainController
+            ? family.workspace === "server"
+              ? identity.sessionHost
               : family.workspace === "firewall"
                 ? `http://${identity.gatewayAddress}`
                 : identity.podName

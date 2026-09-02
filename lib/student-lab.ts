@@ -47,7 +47,8 @@ export function buildStudentLabIdentity(
   const labUsername = assignedLabUsername || `student${studentNumber}`;
   const domainName = "acs-p01.local";
   const netbiosDomain = "ACS-P01";
-  const { gatewayAddress, podNetwork } = getPodAddresses(seatNumber);
+  const { gatewayAddress, podNetwork, sessionHostAddress } =
+    getPodAddresses(seatNumber);
 
   return {
     studentNumber,
@@ -58,7 +59,14 @@ export function buildStudentLabIdentity(
     domainName,
     netbiosDomain,
     domainUsername: `${labUsername}@${domainName}`,
-    domainController: `POD${studentNumber}-DC`,
+    // The machine the student signs in to. Students used to work directly on a
+    // domain controller; they now get their own domain-joined member server and
+    // administer the directory remotely from it with RSAT.
+    sessionHost: `POD${studentNumber}-SRV`,
+    sessionHostAddress,
+    // The directory the session host authenticates and binds against. Students
+    // no longer open a session on either of these.
+    domainControllers: ["DC01-P01", "DC02-P01"],
     gatewayName: `${podName}-GW`,
     gatewayAddress,
     podNetwork,

@@ -77,13 +77,15 @@ export default async function StudentQuickStartPage() {
 
             <Card
               eyebrow="Step 2"
-              title={`Connect to ${identity.domainController}`}
+              title={`Connect to ${identity.sessionHost}`}
             >
               <Server className="text-cyan-300" size={24} />
               <ol className="mt-4 grid list-decimal gap-3 pl-5 text-sm leading-6 text-slate-300">
                 <li>
-                  Find <Value>{identity.domainController}</Value> in your
-                  available connections.
+                  Find <Value>{identity.sessionHost}</Value> in your available
+                  connections. This is your own server: you are a local
+                  administrator on it, and you manage Active Directory from it
+                  with the tools already installed.
                 </li>
                 <li>
                   Select the connection. Its remote desktop credentials are
@@ -103,7 +105,7 @@ export default async function StudentQuickStartPage() {
               <Gauge className="text-cyan-300" size={24} />
               <ol className="mt-4 grid list-decimal gap-3 pl-5 text-sm leading-6 text-slate-300">
                 <li>
-                  Stay connected to <Value>{identity.domainController}</Value>.
+                  Stay connected to <Value>{identity.sessionHost}</Value>.
                 </li>
                 <li>Open Edge or Firefox on the Windows desktop.</li>
                 <li>
@@ -116,7 +118,7 @@ export default async function StudentQuickStartPage() {
               </ol>
               <p className="mt-4 text-sm leading-6 text-slate-300">
                 The old {identity.gatewayName} Guacamole tile is not used. The
-                supported path is the browser on {identity.domainController}.
+                supported path is the browser on {identity.sessionHost}.
               </p>
             </Card>
 
@@ -134,9 +136,13 @@ export default async function StudentQuickStartPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-400">Domain controller</dt>
+                  <dt className="text-slate-400">Your server</dt>
+                  <dd className="mt-2 font-bold">{identity.sessionHost}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400">Domain controllers</dt>
                   <dd className="mt-2 font-bold">
-                    {identity.domainController}
+                    {identity.domainControllers.join(", ")}
                   </dd>
                 </div>
                 <div>

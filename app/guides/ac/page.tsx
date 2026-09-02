@@ -91,7 +91,7 @@ export default async function AccessControlGuidePage() {
           </div>
           <div>
             <dt>Connection</dt>
-            <dd>{identity?.domainController ?? "PODXX-DC"}</dd>
+            <dd>{identity?.sessionHost ?? "PODXX-SRV"}</dd>
           </div>
           <div>
             <dt>Labs</dt>

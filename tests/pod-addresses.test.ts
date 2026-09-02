@@ -7,6 +7,7 @@ describe("getPodAddresses", () => {
     expect(getPodAddresses(1)).toEqual({
       gatewayAddress: "10.51.1.1",
       podNetwork: "10.50.1.0/24",
+      sessionHostAddress: "10.50.1.20",
     });
   });
 
@@ -14,6 +15,7 @@ describe("getPodAddresses", () => {
     expect(getPodAddresses(12)).toEqual({
       gatewayAddress: "10.51.12.1",
       podNetwork: "10.50.12.0/24",
+      sessionHostAddress: "10.50.12.20",
     });
   });
 
