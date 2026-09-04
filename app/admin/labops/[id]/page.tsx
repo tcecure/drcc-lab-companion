@@ -7,13 +7,14 @@ import {
   ActivityStream,
   ApprovalDecision,
   CancelInvestigationButton,
+  FileFindingsNoteButton,
   ResolutionForm,
 } from "@/components/labops/actions";
 import { requireManager } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { authorizeLabOpsRequest } from "@/lib/labops/authz";
 import { isUuid } from "@/lib/labops/http";
-import { isActiveStatus, labopsStore } from "@/lib/labops/store";
+import { isActiveStatus, labopsStore, pendingStepSummary } from "@/lib/labops/store";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,9 @@ export default async function InvestigationPage({
   ]);
   const context = (run.sanitized_context ?? {}) as SanitizedContext;
   const active = isActiveStatus(run.status);
+  const supportRequestId = run.support_request_id;
+  // A direct conversation has no ticket, so nothing here may offer a ticket action.
+  const fromTicket = run.source === "support_request" && supportRequestId !== null;
 
   return (
     <AppShell roles={roles} title={run.title}>
@@ -96,19 +100,31 @@ export default async function InvestigationPage({
           <Link className="button secondary" href="/admin/labops">
             Back to console
           </Link>
-          <Link className="button secondary" href="/admin/queue">
-            Source ticket: {run.support_request_id.slice(0, 8)}
-          </Link>
+          {fromTicket ? (
+            <Link className="button secondary" href={`/admin/support/${supportRequestId}`}>
+              Source ticket: {supportRequestId.slice(0, 8)}
+            </Link>
+          ) : (
+            <Link className="button secondary" href={`/admin/labops/chat?c=${run.id}`}>
+              Open in Direct Chat
+            </Link>
+          )}
           {active && operator.ok ? <CancelInvestigationButton runId={run.id} /> : null}
         </div>
       </Card>
 
       {active ? (
         <Card eyebrow="Live" title="Agent activity">
-          <ActivityStream initialStatus={run.status} runId={run.id} />
+          <ActivityStream
+            canDecideSteps={operator.ok}
+            initialStatus={run.status}
+            pendingStep={pendingStepSummary(events)}
+            runId={run.id}
+          />
         </Card>
       ) : null}
 
+      {fromTicket ? (
       <Card eyebrow="Sent to the model" title="Sanitized ticket context">
         <p className="text-sm text-slate-400">
           Pod {context.podLabel ?? "unknown"} — no student name or email leaves the portal, and
@@ -127,6 +143,7 @@ export default async function InvestigationPage({
           </p>
         ) : null}
       </Card>
+      ) : null}
 
       {approvals.length > 0 ? (
         <Card eyebrow="Confirmation gate" title="Approval requests">
@@ -228,11 +245,21 @@ export default async function InvestigationPage({
         </div>
       </Card>
 
-      {operator.ok ? (
+      {operator.ok && fromTicket ? (
         <Card eyebrow="Outcome" title="Findings and resolution">
           <ResolutionForm findings={run.findings} resolution={run.resolution} runId={run.id} />
+          {run.findings ? (
+            <div className="mt-4 border-t border-cyan-200/10 pt-4">
+              <p className="mb-3 text-sm leading-6 text-slate-300">
+                Optional: copy these findings onto the ticket as an internal, staff-only note.
+                It is attributed to the portal, is written once per investigation, and changes
+                nothing else — status, priority and the student-facing conversation stay yours.
+              </p>
+              <FileFindingsNoteButton runId={run.id} />
+            </div>
+          ) : null}
         </Card>
-      ) : run.findings || run.resolution ? (
+      ) : fromTicket && (run.findings || run.resolution) ? (
         <Card eyebrow="Outcome" title="Findings and resolution">
           <pre className="whitespace-pre-wrap text-sm text-slate-300">{run.findings}</pre>
           <pre className="mt-3 whitespace-pre-wrap text-sm text-slate-300">{run.resolution}</pre>

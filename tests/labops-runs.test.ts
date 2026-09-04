@@ -6,14 +6,28 @@ import type { LabOpsLimits, UsageSnapshot } from "@/lib/labops/budgets";
 import type { LabOpsIdentity } from "@/lib/labops/policy";
 import {
   cancelInvestigation,
+  decideAgentStep,
+  publishReviewedFindings,
   recordResolution,
+  enforceRunDeadlines,
+  reconcileInvestigations,
   relayInvestigation,
   startInvestigation,
+  startDirectConversation,
+  sendDirectMessage,
+  finishDirectConversation,
   type AgentPort,
   type RelayFrame,
   type RunDeps,
 } from "@/lib/labops/runs";
-import type { LabOpsStore, RunRow, RunStatus } from "@/lib/labops/store";
+import {
+  pendingStepSummary,
+  relayCursorFromRows,
+  type LabOpsStore,
+  type RunRow,
+  type RunStatus,
+} from "@/lib/labops/store";
+import type { WorkspaceHandle, WorkspaceRuntime } from "@/lib/labops/workspace";
 import type { SupportRequestRow } from "@/lib/labops/intake";
 
 const limits: LabOpsLimits = {
@@ -57,6 +71,7 @@ function runRow(overrides: Partial<RunRow> = {}): RunRow {
   return {
     id: "run-1",
     support_request_id: supportRequest().id,
+    source: "support_request",
     requested_by: owner.userId,
     status: "queued",
     title: "Cannot reach the pod firewall (connectivity)",
@@ -109,6 +124,15 @@ type StubState = {
   messages: Array<{ role: string; content: string }>;
   toolActions: Array<{ tool: string; outcome: string }>;
   usageRows: Array<UsageSnapshot>;
+  messagesOnTicket?: Awaited<
+    ReturnType<LabOpsStore["getSupportConversation"]>
+  >["messages"];
+  writeSwitches: Record<string, boolean>;
+  findingsNotes: Array<{ runId: string; supportRequestId: string; body: string }>;
+  /** Rows the gateway wrote to ai_run_workspaces, keyed by run. */
+  workspaceRows: Array<{ runId: string; containerName: string; volumeName: string }>;
+  destroyedWorkspaceRows: string[];
+  otherActiveRuns: RunRow[];
 };
 
 function stubStore(state: StubState): LabOpsStore {
@@ -118,6 +142,14 @@ function stubStore(state: StubState): LabOpsStore {
     },
     async getSupportRequest() {
       return state.request;
+    },
+    async getSupportConversation() {
+      return {
+        messages: (state.messagesOnTicket ?? []).filter((message) => !message.is_internal),
+        attachments: [],
+        internalExcluded: (state.messagesOnTicket ?? []).filter((message) => message.is_internal)
+          .length,
+      };
     },
     async getPodLabel() {
       return "Pod01";
@@ -129,8 +161,20 @@ function stubStore(state: StubState): LabOpsStore {
       return state.monthCost;
     },
     async createRun(input) {
-      state.run = runRow({ title: input.title, sanitized_context: { subject: input.brief.subject } });
+      state.run = runRow({
+        source: input.source,
+        support_request_id: input.supportRequestId,
+        title: input.title,
+        sanitized_context: input.sanitizedContext,
+      });
       return state.run;
+    },
+    async listRunPage({ limit = 20, offset = 0, source } = {}) {
+      const rows = (state.run ? [state.run] : []).filter(
+        (row) => !source || row.source === source,
+      );
+
+      return { runs: rows.slice(offset, offset + limit), hasMore: rows.length > offset + limit };
     },
     async attachConversation(_runId, conversationId) {
       state.run = { ...(state.run ?? runRow()), agent_conversation_id: conversationId };
@@ -151,14 +195,20 @@ function stubStore(state: StubState): LabOpsStore {
     async runUsage() {
       return state.recordedUsage;
     },
-    async nextEventSeq() {
-      return state.events.length + 1;
+    async eventCursor() {
+      return { nextSeq: state.events.length + 1, seenEventIds: [] };
     },
     async listEvents() {
       return [];
     },
     async listMessages() {
-      return [];
+      return state.messages.map((message, index) => ({
+        id: index + 1,
+        run_id: state.run?.id ?? "run-1",
+        role: message.role as "system" | "user" | "assistant" | "tool",
+        content: message.content,
+        created_at: "2026-08-25T00:01:00.000Z",
+      }));
     },
     async listToolActions() {
       return [];
@@ -178,14 +228,106 @@ function stubStore(state: StubState): LabOpsStore {
     async listApprovals() {
       return [];
     },
+    async listPendingApprovals() {
+      return [];
+    },
     async getApproval() {
       return null;
     },
     async decideApproval() {
       throw new Error("not used");
     },
+    async isWriteEnabled(scope) {
+      return state.writeSwitches[scope] === true;
+    },
+    async publishFindingsNote(input) {
+      if (state.findingsNotes.some((note) => note.runId === input.runId)) {
+        return { created: false };
+      }
+
+      state.findingsNotes.push(input);
+
+      return { created: true };
+    },
     async recordIntegrationHealth() {},
+    async listActiveRuns() {
+      const own = state.run && isActive(state.run.status) ? [state.run] : [];
+      return [...own, ...state.otherActiveRuns];
+    },
+    async recordWorkspace(input) {
+      state.workspaceRows.push({
+        runId: input.runId,
+        containerName: input.containerName,
+        volumeName: input.volumeName,
+      });
+    },
+    async markWorkspaceDestroyed(runId) {
+      state.destroyedWorkspaceRows.push(runId);
+    },
   };
+}
+
+function isActive(status: RunStatus) {
+  return (
+    status === "queued" ||
+    status === "running" ||
+    status === "paused" ||
+    status === "awaiting_approval"
+  );
+}
+
+type StubRuntime = WorkspaceRuntime & {
+  started: string[];
+  destroyed: string[];
+  live: Map<string, WorkspaceHandle>;
+};
+
+/**
+ * Stands in for run-investigation.sh. Each run gets its own container name, volume and
+ * address, so a test can prove the gateway talks to the run's own workspace rather than a
+ * shared one.
+ */
+function stubRuntime(overrides: Partial<WorkspaceRuntime> = {}): StubRuntime {
+  const live = new Map<string, WorkspaceHandle>();
+  const started: string[] = [];
+  const destroyed: string[] = [];
+  let nextHost = 10;
+
+  const runtime: StubRuntime = {
+    started,
+    destroyed,
+    live,
+    async start(runId) {
+      started.push(runId);
+      nextHost += 1;
+
+      const handle: WorkspaceHandle = {
+        runId,
+        containerName: `labops-inv-${runId}`,
+        volumeName: `labops-inv-${runId}`,
+        imageDigest: "ghcr.io/openhands/agent-server@sha256:pinned",
+        endpoint: `172.31.241.${nextHost}:8000`,
+        running: true,
+      };
+
+      live.set(runId, handle);
+
+      return handle;
+    },
+    async inspect(runId) {
+      return live.get(runId) ?? null;
+    },
+    async list() {
+      return [...live.keys()];
+    },
+    async destroy(runId) {
+      destroyed.push(runId);
+      live.delete(runId);
+    },
+    ...overrides,
+  };
+
+  return runtime;
 }
 
 function stubAgent(overrides: Partial<AgentPort> = {}): AgentPort {
@@ -197,6 +339,8 @@ function stubAgent(overrides: Partial<AgentPort> = {}): AgentPort {
     async cancel() {
       return { stopped: true };
     },
+    async respondToConfirmation() {},
+    async sendMessage() {},
     async getConversation() {
       return snapshot("running", usage(0, 0, 0));
     },
@@ -219,6 +363,39 @@ function deps(state: StubState, agent = stubAgent()): RunDeps {
   };
 }
 
+/**
+ * Per-run runtime wiring, as gateway.ts assembles it: one container per investigation,
+ * reached at the address the runtime reports, and a model base URL scoped to the run.
+ */
+function perRunDeps(
+  state: StubState,
+  options: {
+    agentFor?: (handle: WorkspaceHandle) => AgentPort;
+    runtime?: StubRuntime;
+    now?: () => number;
+  } = {},
+): RunDeps & { runtime: StubRuntime; endpointsUsed: string[] } {
+  const runtime = options.runtime ?? stubRuntime();
+  const endpointsUsed: string[] = [];
+
+  return {
+    ...deps(state),
+    ...(options.now ? { now: options.now } : {}),
+    runtime,
+    endpointsUsed,
+    readyTimeoutMs: 1_000,
+    agentFor: (handle) => {
+      endpointsUsed.push(handle.endpoint);
+      return options.agentFor?.(handle) ?? stubAgent();
+    },
+    llmFor: (runId) => ({
+      model: "openai/gpt-5.5",
+      apiKey: "proxy-token",
+      baseUrl: `http://172.31.241.2:8081/r/${runId}/v1`,
+    }),
+  };
+}
+
 let state: StubState;
 
 beforeEach(() => {
@@ -233,6 +410,11 @@ beforeEach(() => {
     messages: [],
     toolActions: [],
     usageRows: [],
+    writeSwitches: {},
+    findingsNotes: [],
+    workspaceRows: [],
+    destroyedWorkspaceRows: [],
+    otherActiveRuns: [],
   };
 });
 
@@ -373,6 +555,64 @@ describe("cancelling an investigation", () => {
   });
 });
 
+describe("deciding the step an agent is waiting on", () => {
+  it("allows the pending action and resumes the run", async () => {
+    state.run = runRow({ status: "awaiting_approval", agent_conversation_id: "conv-1" });
+    const decisions: { accept: boolean; reason?: string }[] = [];
+    const agent = stubAgent({
+      async respondToConfirmation(_conversationId, input) {
+        decisions.push(input);
+      },
+    });
+
+    const result = await decideAgentStep(deps(state, agent), {
+      identity: owner,
+      runId: "run-1",
+      accept: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(decisions).toEqual([{ accept: true }]);
+    expect(state.statusUpdates.at(-1)?.status).toBe("running");
+    expect(state.toolActions.at(-1)).toMatchObject({
+      tool: "agent.action.allow",
+      outcome: "allowed",
+    });
+  });
+
+  it("sends a refusal reason back to the agent", async () => {
+    state.run = runRow({ status: "awaiting_approval", agent_conversation_id: "conv-1" });
+    const decisions: { accept: boolean; reason?: string }[] = [];
+    const agent = stubAgent({
+      async respondToConfirmation(_conversationId, input) {
+        decisions.push(input);
+      },
+    });
+
+    await decideAgentStep(deps(state, agent), {
+      identity: owner,
+      runId: "run-1",
+      accept: false,
+      reason: "Do not touch the gateway.",
+    });
+
+    expect(decisions).toEqual([{ accept: false, reason: "Do not touch the gateway." }]);
+    expect(state.toolActions.at(-1)).toMatchObject({ tool: "agent.action.refuse" });
+  });
+
+  it("refuses to decide a run with no step waiting", async () => {
+    state.run = runRow({ status: "running", agent_conversation_id: "conv-1" });
+
+    const result = await decideAgentStep(deps(state), {
+      identity: owner,
+      runId: "run-1",
+      accept: true,
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "not_awaiting_approval" });
+  });
+});
+
 async function collect(generator: AsyncGenerator<RelayFrame>) {
   const frames: RelayFrame[] = [];
 
@@ -414,6 +654,40 @@ describe("relaying activity", () => {
     expect(state.events).toHaveLength(1);
     expect(state.usageRows).toEqual([usage(1_000, 500, 0.25)]);
     expect(state.statusUpdates.at(-1)?.status).toBe("succeeded");
+  });
+
+  it("keeps the agent's own prose as a message, and the brief's echo out of it", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const agent = stubAgent({
+      async *streamActivity() {
+        // The server replays the brief back as a user-sourced MessageEvent.
+        yield {
+          type: "event" as const,
+          event: { ...event, id: "evt-brief", kind: "MessageEvent", source: "user", summary: "brief" },
+        };
+        yield {
+          type: "event" as const,
+          event: {
+            ...event,
+            id: "evt-answer",
+            kind: "MessageEvent",
+            summary: "Pod01 has no blocked connections logged; the seed job never ran.",
+          },
+        };
+        yield { type: "status" as const, snapshot: snapshot("succeeded", usage(10, 5, 0.01)) };
+      },
+    });
+
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    expect(state.messages).toEqual([
+      { role: "assistant", content: "Pod01 has no blocked connections logged; the seed job never ran." },
+    ]);
   });
 
   it("gives a failed run a reason drawn from the agent's error event", async () => {
@@ -582,5 +856,770 @@ describe("recording a resolution", () => {
     await recordResolution(deps(state), { runId: "run-1", findings: "Superseded" });
 
     expect(state.statusUpdates.at(-1)?.status).toBe("cancelled");
+  });
+
+  it("refuses to conclude when the student replied after the investigation read the ticket", async () => {
+    state.request = { ...supportRequest(), last_message_at: "2026-08-25T09:00:00.000Z" };
+    state.run = runRow({
+      status: "running",
+      sanitized_context: {
+        freshness: {
+          lastMessageAt: "2026-08-25T08:00:00.000Z",
+          includedMessageIds: ["msg-1"],
+        },
+      },
+    });
+
+    const result = await recordResolution(deps(state), {
+      runId: "run-1",
+      findings: "Answer based on the older ticket text",
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "stale_context" });
+    expect(state.statusUpdates).toHaveLength(0);
+  });
+
+  it("concludes anyway when the operator acknowledges the newer replies", async () => {
+    state.request = { ...supportRequest(), last_message_at: "2026-08-25T09:00:00.000Z" };
+    state.run = runRow({
+      status: "running",
+      sanitized_context: {
+        freshness: {
+          lastMessageAt: "2026-08-25T08:00:00.000Z",
+          includedMessageIds: ["msg-1"],
+        },
+      },
+    });
+
+    const result = await recordResolution(deps(state), {
+      runId: "run-1",
+      findings: "Still valid",
+      acknowledgeStaleContext: true,
+    });
+
+    expect(result).toMatchObject({ ok: true, stale: true });
+    expect(state.statusUpdates.at(-1)?.status).toBe("succeeded");
+  });
+});
+
+describe("filing findings on the ticket", () => {
+  it("refuses while the support_notes write switch is off", async () => {
+    state.run = runRow({ status: "succeeded", findings: "LAN rule ordering" });
+
+    const result = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "writes_disabled" });
+    expect(state.findingsNotes).toHaveLength(0);
+  });
+
+  it("refuses when the investigation produced no findings", async () => {
+    state.writeSwitches.support_notes = true;
+    state.run = runRow({ status: "succeeded", findings: "   " });
+
+    const result = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "no_findings" });
+    expect(state.findingsNotes).toHaveLength(0);
+  });
+
+  it("writes one internal note and never touches the ticket status", async () => {
+    state.writeSwitches.support_notes = true;
+    state.run = runRow({
+      status: "succeeded",
+      findings: "Pod01 LAN default deny sits above the DMZ rules.",
+      resolution: "Move the deny to the bottom of the LAN tab.",
+    });
+
+    const first = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+    const second = await publishReviewedFindings(deps(state), {
+      runId: "run-1",
+      actorUserId: owner.userId,
+    });
+
+    expect(first).toEqual({ ok: true, created: true });
+    expect(second).toEqual({ ok: true, created: false });
+    expect(state.findingsNotes).toHaveLength(1);
+    expect(state.findingsNotes[0]?.body).toContain("[labops-run:run-1]");
+    expect(state.statusUpdates).toHaveLength(0);
+    expect(state.toolActions.map((action) => action.outcome)).toEqual([
+      "succeeded",
+      "denied",
+    ]);
+  });
+});
+
+describe("per-investigation containers", () => {
+  const event: AgentActivityEvent = {
+    id: "evt-1",
+    kind: "action",
+    source: "agent",
+    timestamp: "2026-08-25T00:01:30.000Z",
+    summary: "Read the pod firewall rules",
+    toolName: "execute_bash",
+    redacted: false,
+  };
+
+  it("launches a container for the run, records it, and uses its own address", async () => {
+    const runtimeDeps = perRunDeps(state);
+
+    const result = await startInvestigation(runtimeDeps, {
+      identity: owner,
+      supportRequestId: state.request!.id,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(runtimeDeps.runtime.started).toEqual(["run-1"]);
+    expect(runtimeDeps.endpointsUsed).toEqual(["172.31.241.11:8000"]);
+    expect(state.workspaceRows).toEqual([
+      {
+        runId: "run-1",
+        containerName: "labops-inv-run-1",
+        volumeName: "labops-inv-run-1",
+      },
+    ]);
+    expect(state.toolActions.map((action) => action.tool)).toContain(
+      "runtime.workspace.create",
+    );
+  });
+
+  it("gives the container a model base URL scoped to its own run", async () => {
+    const seen: Array<string | undefined> = [];
+    const runtimeDeps = perRunDeps(state, {
+      agentFor: () =>
+        stubAgent({
+          async createConversation(input) {
+            seen.push(input.llm?.baseUrl);
+            // The provider key is never handed to a container; the proxy holds it.
+            expect(input.llm?.apiKey).toBe("proxy-token");
+            return snapshot("running", usage(0, 0, 0));
+          },
+        }),
+    });
+
+    await startInvestigation(runtimeDeps, {
+      identity: owner,
+      supportRequestId: state.request!.id,
+    });
+
+    expect(seen).toEqual(["http://172.31.241.2:8081/r/run-1/v1"]);
+  });
+
+  it("destroys the workspace when the conversation cannot be created", async () => {
+    const runtimeDeps = perRunDeps(state, {
+      agentFor: () =>
+        stubAgent({
+          async createConversation() {
+            throw new AgentServerError("unavailable", "Agent server is unreachable.");
+          },
+        }),
+    });
+
+    const result = await startInvestigation(runtimeDeps, {
+      identity: owner,
+      supportRequestId: state.request!.id,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(runtimeDeps.runtime.destroyed).toEqual(["run-1"]);
+    expect(state.destroyedWorkspaceRows).toEqual(["run-1"]);
+  });
+
+  it("destroys the workspace when the run finishes", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const runtimeDeps = perRunDeps(state, {
+      runtime,
+      agentFor: () =>
+        stubAgent({
+          async *streamActivity() {
+            yield { type: "event" as const, event };
+            yield {
+              type: "status" as const,
+              snapshot: snapshot("succeeded", usage(10, 5, 0.01)),
+            };
+          },
+        }),
+    });
+
+    await collect(relayInvestigation(runtimeDeps, { runId: "run-1" }));
+
+    expect(runtimeDeps.runtime.destroyed).toEqual(["run-1"]);
+    expect(state.destroyedWorkspaceRows).toEqual(["run-1"]);
+  });
+
+  it("destroys the workspace when a budget stops the run", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const runtimeDeps = perRunDeps(state, {
+      runtime,
+      agentFor: () =>
+        stubAgent({
+          async *streamActivity() {
+            yield {
+              type: "status" as const,
+              snapshot: snapshot("running", usage(400_000, 0, 0)),
+            };
+          },
+        }),
+    });
+
+    const frames = await collect(relayInvestigation(runtimeDeps, { runId: "run-1" }));
+
+    expect(frames.some((frame) => frame.type === "budget")).toBe(true);
+    expect(runtimeDeps.runtime.destroyed).toEqual(["run-1"]);
+  });
+
+  it("refuses to relay a run whose container is gone instead of using another one", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    // A different investigation is running; this run's own container is absent.
+    await runtime.start("run-other");
+
+    const runtimeDeps = perRunDeps(state, { runtime });
+    const frames = await collect(relayInvestigation(runtimeDeps, { runId: "run-1" }));
+
+    expect(frames[0]).toMatchObject({ type: "error" });
+    expect(runtimeDeps.endpointsUsed).toEqual([]);
+    expect(state.statusUpdates.at(-1)?.status).toBe("failed");
+    expect(runtime.live.has("run-other")).toBe(true);
+  });
+
+  it("ends runs the database still calls active after a gateway restart", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const outcome = await reconcileInvestigations(perRunDeps(state, { runtime }));
+
+    expect(outcome.endedRuns).toEqual(["run-1"]);
+    expect(runtime.destroyed).toContain("run-1");
+    expect(state.statusUpdates.at(-1)?.status).toBe("failed");
+    expect(state.statusUpdates.at(-1)?.patch?.failureReason).toContain("restarted");
+  });
+
+  it("reaps a container left behind with no live run", async () => {
+    state.run = null;
+
+    const runtime = stubRuntime();
+    await runtime.start("run-orphan");
+
+    const outcome = await reconcileInvestigations(perRunDeps(state, { runtime }));
+
+    expect(outcome.reapedWorkspaces).toEqual(["run-orphan"]);
+    expect(runtime.live.size).toBe(0);
+    // The audit tables are keyed to a run, so a container with none must not be recorded:
+    // the insert would fail and abandon the cleanup.
+    expect(state.toolActions).toEqual([]);
+    expect(state.destroyedWorkspaceRows).toEqual([]);
+  });
+
+  it("ends a run that outlives its wall-clock limit with nobody watching the relay", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const outcome = await enforceRunDeadlines(
+      perRunDeps(state, {
+        runtime,
+        // 21 minutes after the run started; the limit is 20.
+        now: () => Date.parse("2026-08-25T00:22:00.000Z"),
+      }),
+    );
+
+    expect(outcome.endedRuns).toEqual(["run-1"]);
+    expect(state.statusUpdates.at(-1)?.status).toBe("timed_out");
+    expect(runtime.destroyed).toContain("run-1");
+  });
+
+  it("leaves a run inside its limit alone", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const outcome = await enforceRunDeadlines(perRunDeps(state, { runtime }));
+
+    expect(outcome).toEqual({ endedRuns: [], reapedWorkspaces: [] });
+    expect(runtime.live.has("run-1")).toBe(true);
+  });
+
+  it("records a cleanup failure instead of losing it", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime({
+      async destroy() {
+        throw new Error("docker daemon is not responding");
+      },
+    });
+    await runtime.start("run-1");
+
+    await cancelInvestigation(perRunDeps(state, { runtime }), {
+      identity: owner,
+      runId: "run-1",
+    });
+
+    const cleanup = state.toolActions.filter(
+      (action) => action.tool === "runtime.workspace.destroy",
+    );
+
+    expect(cleanup).toEqual([{ tool: "runtime.workspace.destroy", outcome: "failed" }]);
+  });
+
+  it("destroys the workspace when the owner cancels", async () => {
+    state.run = runRow({
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    await runtime.start("run-1");
+
+    const result = await cancelInvestigation(perRunDeps(state, { runtime }), {
+      identity: owner,
+      runId: "run-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(runtime.destroyed).toEqual(["run-1"]);
+    expect(state.destroyedWorkspaceRows).toEqual(["run-1"]);
+  });
+});
+
+describe("resuming a relay and describing a held step", () => {
+  it("resumes from the persisted timeline instead of replaying it", () => {
+    const cursor = relayCursorFromRows([
+      {
+        seq: 2,
+        payload: { agentEventId: "evt-2", timestamp: "2026-08-31T10:51:23.536Z" },
+      },
+      {
+        seq: 1,
+        payload: { agentEventId: "evt-1", timestamp: "2026-08-31T10:51:18.945Z" },
+      },
+    ]);
+
+    expect(cursor.nextSeq).toBe(3);
+    expect(cursor.since).toBe("2026-08-31T10:51:23.536Z");
+    // The agent's timestamp bound is inclusive, so the ids are what stops a duplicate.
+    expect(cursor.seenEventIds).toEqual(["evt-2", "evt-1"]);
+  });
+
+  it("reads the held action out of the persisted timeline", () => {
+    // The relay never re-sends a stored event, so an operator who reloads the page would
+    // otherwise be asked to allow or refuse a step with nothing describing it.
+    expect(
+      pendingStepSummary([
+        { kind: "ActionEvent", payload: { summary: "Run `ip addr show` on pod03-gw" } },
+        { kind: "ConversationStateUpdateEvent", payload: { summary: "waiting_for_confirmation" } },
+      ]),
+    ).toBe("Run `ip addr show` on pod03-gw");
+
+    expect(pendingStepSummary([{ kind: "MessageEvent", payload: { summary: "hello" } }])).toBeNull();
+    expect(pendingStepSummary([{ kind: "ActionEvent", payload: { toolName: "terminal" } }])).toBe(
+      "terminal",
+    );
+  });
+});
+
+describe("direct chat", () => {
+  it("starts a conversation with no ticket behind it", async () => {
+    const prompts: string[] = [];
+    const agent = stubAgent({
+      async createConversation(input) {
+        prompts.push(input.initialMessage ?? "");
+        return snapshot("running", usage(0, 0, 0));
+      },
+    });
+
+    const result = await startDirectConversation(deps(state, agent), {
+      identity: owner,
+      prompt: "Why did the SC M4-L1 verifier fail on Pod03?\nIt passed yesterday.",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(state.run?.source).toBe("direct");
+    expect(state.run?.support_request_id).toBeNull();
+    expect(state.run?.title).toBe("Why did the SC M4-L1 verifier fail on Pod03?");
+    expect(prompts[0]).toContain("Why did the SC M4-L1 verifier fail on Pod03?");
+    // Only what the operator typed is kept as theirs; the framing is not their words.
+    expect(state.messages[0]).toEqual({
+      role: "user",
+      content: "Why did the SC M4-L1 verifier fail on Pod03?\nIt passed yesterday.",
+    });
+  });
+
+  it("redacts a secret pasted into the question before the agent sees it", async () => {
+    const prompts: string[] = [];
+    const agent = stubAgent({
+      async createConversation(input) {
+        prompts.push(input.initialMessage ?? "");
+        return snapshot("running", usage(0, 0, 0));
+      },
+    });
+
+    await startDirectConversation(deps(state, agent), {
+      identity: owner,
+      prompt: "The pod admin password is Hunter2Hunter2! — is that why the join fails?",
+    });
+
+    expect(prompts[0]).not.toContain("Hunter2Hunter2!");
+    expect(state.messages[0]?.content).not.toContain("Hunter2Hunter2!");
+  });
+
+  it("refuses an empty question and a second concurrent conversation", async () => {
+    expect(
+      await startDirectConversation(deps(state), { identity: owner, prompt: "   " }),
+    ).toMatchObject({ ok: false, code: "prompt_invalid" });
+
+    state.activeRuns = 1;
+
+    expect(
+      await startDirectConversation(deps(state), { identity: owner, prompt: "Anything?" }),
+    ).toMatchObject({ ok: false, code: "limit_reached" });
+  });
+
+  it("continues the same conversation on a follow-up", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "paused",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const sent: Array<{ conversationId: string; text: string; run?: boolean }> = [];
+    const agent = stubAgent({
+      async sendMessage(conversationId, text, options) {
+        sent.push({ conversationId, text, run: options?.run });
+      },
+      async createConversation() {
+        throw new Error("a follow-up must not create another conversation");
+      },
+    });
+
+    const result = await sendDirectMessage(deps(state, agent), {
+      identity: owner,
+      runId: "run-1",
+      prompt: "What should I check first?",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(sent).toEqual([
+      { conversationId: "conv-1", text: "What should I check first?", run: true },
+    ]);
+    expect(state.messages.at(-1)).toEqual({
+      role: "user",
+      content: "What should I check first?",
+    });
+    expect(state.statusUpdates.at(-1)?.status).toBe("running");
+  });
+
+  it("refuses a follow-up unless the conversation is direct and ready", async () => {
+    state.run = runRow({ status: "running", agent_conversation_id: "conv-1" });
+
+    expect(
+      await sendDirectMessage(deps(state), { identity: owner, runId: "run-1", prompt: "hi" }),
+    ).toMatchObject({ ok: false, code: "not_direct" });
+
+    for (const status of ["running", "awaiting_approval", "succeeded", "cancelled"] as const) {
+      state.run = runRow({
+        source: "direct",
+        support_request_id: null,
+        status,
+        agent_conversation_id: "conv-1",
+      });
+
+      expect(
+        await sendDirectMessage(deps(state), { identity: owner, runId: "run-1", prompt: "hi" }),
+      ).toMatchObject({ ok: false, code: "not_ready" });
+    }
+
+    state.run = null;
+
+    expect(
+      await sendDirectMessage(deps(state), { identity: owner, runId: "run-1", prompt: "hi" }),
+    ).toMatchObject({ ok: false, code: "run_not_found" });
+  });
+
+  it("ends a follow-up that would exceed the budget, destroying the workspace", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "paused",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+    state.recordedUsage = usage(0, 0, limits.runCostBudgetUsd);
+
+    const result = await sendDirectMessage(deps(state), {
+      identity: owner,
+      runId: "run-1",
+      prompt: "One more thing",
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "limit_reached" });
+    expect(state.statusUpdates.at(-1)?.status).toBe("budget_exhausted");
+  });
+
+  it("finishes a direct conversation and destroys its container", async () => {
+    const runtime = stubRuntime();
+    const handle = await runtime.start("run-1");
+
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "paused",
+      agent_conversation_id: "conv-1",
+    });
+
+    const runDeps = perRunDeps(state, { runtime });
+    const result = await finishDirectConversation(runDeps, { identity: owner, runId: "run-1" });
+
+    expect(result.ok).toBe(true);
+    expect(state.statusUpdates.at(-1)?.status).toBe("succeeded");
+    expect(await runtime.inspect(handle.runId)).toBeNull();
+    expect(state.destroyedWorkspaceRows).toContain("run-1");
+  });
+
+  it("refuses to finish a ticket investigation or an ended conversation", async () => {
+    state.run = runRow({ status: "paused" });
+
+    expect(
+      await finishDirectConversation(deps(state), { identity: owner, runId: "run-1" }),
+    ).toMatchObject({ ok: false, code: "not_direct" });
+
+    state.run = runRow({ source: "direct", support_request_id: null, status: "succeeded" });
+
+    expect(
+      await finishDirectConversation(deps(state), { identity: owner, runId: "run-1" }),
+    ).toMatchObject({ ok: false, code: "already_terminal" });
+  });
+
+  it("parks a direct run at Ready instead of ending it when the agent stops working", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const runtime = stubRuntime();
+    const handle = await runtime.start("run-1");
+    const agent = stubAgent({
+      async *streamActivity() {
+        yield {
+          type: "event" as const,
+          event: {
+            id: "evt-answer",
+            kind: "MessageEvent",
+            source: "agent",
+            timestamp: "2026-08-25T00:01:30.000Z",
+            summary: "The seed job never ran on Pod03.",
+            toolName: null,
+            redacted: false,
+          },
+        };
+        yield { type: "status" as const, snapshot: snapshot("succeeded", usage(20, 10, 0.02)) };
+      },
+    });
+
+    const frames = await collect(
+      relayInvestigation(perRunDeps(state, { runtime, agentFor: () => agent }), {
+        runId: "run-1",
+      }),
+    );
+
+    expect(frames.at(-1)).toMatchObject({ type: "end", status: "paused" });
+    expect(state.statusUpdates.at(-1)?.status).toBe("paused");
+    // Ready keeps the conversation alive: the workspace must still be there.
+    expect(await runtime.inspect(handle.runId)).not.toBeNull();
+    expect(state.messages).toEqual([
+      { role: "assistant", content: "The seed job never ran on Pod03." },
+    ]);
+  });
+
+  it("keeps following a follow-up the agent has not answered yet", async () => {
+    // The agent server reports an idle conversation between accepting a follow-up and its
+    // loop picking the message up, and ends its own stream there. Parking on that first
+    // idle report loses the answer that is generated, and billed, immediately after.
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+    state.messages = [
+      { role: "user", content: "What broke on Pod03?" },
+      { role: "assistant", content: "The seed job never ran on Pod03." },
+      { role: "user", content: "Thanks. In one sentence, what is that hostname?" },
+    ];
+
+    const runtime = stubRuntime();
+    const handle = await runtime.start("run-1");
+    let pass = 0;
+    const agent = stubAgent({
+      async *streamActivity() {
+        pass += 1;
+
+        if (pass === 1) {
+          // Accepted but not started: nothing but an idle report.
+          yield { type: "status" as const, snapshot: snapshot("paused", usage(40, 10, 0.03)) };
+          return;
+        }
+
+        yield {
+          type: "event" as const,
+          event: {
+            id: "evt-followup",
+            kind: "MessageEvent",
+            source: "agent",
+            timestamp: "2026-08-25T00:01:45.000Z",
+            summary: "The hostname is labops-inv-run-1.",
+            toolName: null,
+            redacted: false,
+          },
+        };
+        yield { type: "status" as const, snapshot: snapshot("paused", usage(60, 20, 0.05)) };
+      },
+    });
+
+    const frames = await collect(
+      relayInvestigation(perRunDeps(state, { runtime, agentFor: () => agent }), {
+        runId: "run-1",
+      }),
+    );
+
+    expect(pass).toBe(2);
+    expect(state.messages.at(-1)).toEqual({
+      role: "assistant",
+      content: "The hostname is labops-inv-run-1.",
+    });
+    expect(frames.map((frame) => frame.type)).toContain("event");
+    expect(frames.at(-1)).toMatchObject({ type: "end", status: "paused" });
+    // The operator stays on Running while the answer is still owed.
+    expect(frames.some((frame) => frame.type === "status" && frame.status === "running")).toBe(true);
+    expect(await runtime.inspect(handle.runId)).not.toBeNull();
+  });
+
+  it("parks a direct conversation whose answer already landed without another pass", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+    state.messages = [
+      { role: "user", content: "What broke on Pod03?" },
+      { role: "assistant", content: "The seed job never ran on Pod03." },
+    ];
+
+    let pass = 0;
+    const agent = stubAgent({
+      async *streamActivity() {
+        pass += 1;
+        yield { type: "status" as const, snapshot: snapshot("paused", usage(40, 10, 0.03)) };
+      },
+    });
+
+    const frames = await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    expect(pass).toBe(1);
+    expect(frames.at(-1)).toMatchObject({ type: "end", status: "paused" });
+  });
+
+  it("stores the same answer once across a relay reconnect", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "running",
+      agent_conversation_id: "conv-1",
+      started_at: "2026-08-25T00:01:00.000Z",
+    });
+
+    const answer = {
+      id: "evt-answer",
+      kind: "MessageEvent",
+      source: "agent",
+      timestamp: "2026-08-25T00:01:30.000Z",
+      summary: "Reseed M4-L1 and re-run the verifier.",
+      toolName: null,
+      redacted: false,
+    };
+    const agent = stubAgent({
+      async *streamActivity() {
+        yield { type: "event" as const, event: answer };
+        yield { type: "status" as const, snapshot: snapshot("paused", usage(20, 10, 0.02)) };
+      },
+    });
+
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+    await collect(relayInvestigation(deps(state, agent), { runId: "run-1" }));
+
+    expect(state.messages.filter((message) => message.role === "assistant")).toHaveLength(1);
+  });
+
+  it("never offers the ticket findings note on a direct conversation", async () => {
+    state.run = runRow({
+      source: "direct",
+      support_request_id: null,
+      status: "succeeded",
+      findings: "The seed job never ran.",
+    });
+    state.writeSwitches.support_notes = true;
+
+    expect(
+      await publishReviewedFindings(deps(state), { runId: "run-1", actorUserId: owner.userId }),
+    ).toMatchObject({ ok: false });
+    expect(state.findingsNotes).toHaveLength(0);
   });
 });

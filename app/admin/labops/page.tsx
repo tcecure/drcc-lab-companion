@@ -81,7 +81,16 @@ export default async function LabOpsPage() {
             </dd>
           </div>
         </dl>
-        {operator.ok ? null : (
+        {operator.ok ? (
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Link className="button" href="/admin/labops/chat">
+              Ask LabOps AI
+            </Link>
+            <span className="text-sm text-slate-400">
+              Ask a question directly, without opening a support ticket.
+            </span>
+          </div>
+        ) : (
           <p className="mt-4 text-sm text-slate-400">
             Read-only view. Investigations are started and stopped by the pilot operator.
           </p>
@@ -156,6 +165,7 @@ export default async function LabOpsPage() {
             <thead>
               <tr>
                 <th>Investigation</th>
+                <th>Source</th>
                 <th>Status</th>
                 <th>Started</th>
                 <th>Ended</th>
@@ -165,10 +175,18 @@ export default async function LabOpsPage() {
               {runs.map((run) => (
                 <tr key={run.id}>
                   <td>
-                    <Link className="font-bold text-cyan-200" href={`/admin/labops/${run.id}`}>
+                    <Link
+                      className="font-bold text-cyan-200"
+                      href={
+                        run.source === "direct"
+                          ? `/admin/labops/chat?c=${run.id}`
+                          : `/admin/labops/${run.id}`
+                      }
+                    >
                       {run.title}
                     </Link>
                   </td>
+                  <td>{run.source === "direct" ? "Direct chat" : "Support ticket"}</td>
                   <td>
                     <span className="status-pill">{run.status.replaceAll("_", " ")}</span>
                   </td>
@@ -178,7 +196,7 @@ export default async function LabOpsPage() {
               ))}
               {runs.length === 0 ? (
                 <tr>
-                  <td colSpan={4}>No investigations yet.</td>
+                  <td colSpan={5}>No investigations yet.</td>
                 </tr>
               ) : null}
             </tbody>

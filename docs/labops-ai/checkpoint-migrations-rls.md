@@ -1,9 +1,11 @@
 # Approval checkpoint — proposed Supabase migrations and RLS
 
-**Nothing has been applied to the DRCC project (`kkacbtkacadgsnbylkti`).** The two files
-below are prefixed `PROPOSED_` so no migration runner can pick them up; they are renamed
-to their real timestamps only after you approve, and they are then applied to a staging
-project (or a branch) before production.
+**Both files below have since been applied to DRCC production (`kkacbtkacadgsnbylkti`) with
+approval.** The `PROPOSED_` prefix is kept so a migration runner cannot replay them out of
+band; production is deliberately ahead of the repository's migration history, and every
+statement is guarded so a replay would be a no-op. The "then staging, then production"
+ordering this document was written against no longer applies — see
+[production-first-workflow.md](./production-first-workflow.md).
 
 | File | What it does |
 |---|---|
@@ -66,13 +68,15 @@ values (...);                                 -- expect: new row violates row-le
 update public.ai_run_events set kind = 'x';   -- expect: permission denied
 ```
 
-These run as integration tests against a staging project, and the student-denial cases are
-part of the acceptance criteria.
+These ran as integration tests against the (now legacy) `DRCC-staging` project. The
+student-denial cases remain part of the acceptance criteria; today they are covered by the
+local harness plus the rolled-back production probe described in
+[phase2-apply-log.md](./phase2-apply-log.md).
 
-### Staging result
+### Historical result (2026-08, legacy staging project)
 
-Both migrations are applied to the `DRCC-staging` project (structure-only copy of the five
-portal tables, no production rows), and all ten behavioural checks pass there:
+Both migrations were applied to `DRCC-staging` (a structure-only copy of five portal tables,
+no production rows) and all ten behavioural checks passed there:
 
 ```bash
 SUPABASE_ACCESS_TOKEN=... supabase/tests/labops/run_staging.sh <staging-ref>
@@ -81,8 +85,10 @@ SUPABASE_ACCESS_TOKEN=... supabase/tests/labops/run_staging.sh <staging-ref>
 
 The script is re-runnable: it seeds fixtures idempotently, replays both migrations, asserts
 the table privileges (`authenticated` may select but not write, `anon` may not read, even
-`service_role` cannot update the audit tables) and removes its own rows afterwards. It also
-must never be pointed at production - migrations reach production only after approval.
+`service_role` cannot update the audit tables) and removes its own rows afterwards. It must
+never be pointed at production, because it commits fixture rows. `DRCC-staging` is no longer
+maintained, so this script is now a historical record rather than a step anyone runs; the
+production-safe equivalent is `supabase/tests/labops/prod_behaviour.sql`.
 
 Two defects the remote run surfaced that the local harness could not: the production
 `roles_role_name_check` constraint rejected the four new role names (the migration now
@@ -107,4 +113,4 @@ Nothing pre-existing is modified, so rollback cannot damage the portal.
 
 - [ ] Table/column design and the two invariants enforced in the database (single active run, no self-approval).
 - [ ] RLS model: staff read-only, all writes via the gateway service role, audit tables append-only for everyone.
-- [ ] Apply to staging first, then production on your go-ahead only.
+- [x] Applied to production on the owner's go-ahead (2026-08-25 for these two, 2026-08-29 for the Phase 2 broker). No staging step exists.

@@ -17,6 +17,7 @@ server-side from the Supabase session on every request; nothing is trusted from 
 | `/api/labops/investigations/{id}` | PATCH | `start_investigation` | Records findings/resolution on the investigation. `support_requests` is never written. |
 | `/api/labops/investigations/{id}/cancel` | POST | `cancel_investigation` | Owner-only. |
 | `/api/labops/investigations/{id}/activity` | GET | `read_investigations` | SSE relay. |
+| `/api/labops/investigations/{id}/step` | POST | `confirm_agent_step` | Owner-only. Body `{ accept, reason? }`. Answers the action the agent server is holding; a refusal returns the reason so the agent can propose something else. `409` when the run has no step waiting. |
 | `/api/labops/approvals/{id}` | POST | `decide_approval` | Body `{ decision, note? }`. Requester can never decide. |
 
 ## Status codes

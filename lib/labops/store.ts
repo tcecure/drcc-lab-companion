@@ -14,6 +14,10 @@ import "server-only";
 
 import type { AgentActivityEvent, AgentRunStatus } from "@/lib/labops/agent-protocol";
 import { addUsage, zeroUsage, type UsageSnapshot } from "@/lib/labops/budgets";
+import type {
+  ConversationAttachmentMeta,
+  SupportMessageRow,
+} from "@/lib/labops/conversation";
 import type { InvestigationBrief, SupportRequestRow } from "@/lib/labops/intake";
 import { redactText } from "@/lib/labops/redact";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -35,20 +39,49 @@ export function isActiveStatus(status: RunStatus) {
   return (activeRunStatuses as readonly RunStatus[]).includes(status);
 }
 
+/** Where a run came from: a support ticket, or a question typed into Direct Chat. */
+export type RunSource = RunRow["source"];
+
 export type CreateRunInput = {
-  supportRequestId: string;
+  source: RunSource;
+  /** Always null for a direct conversation; the database constraint enforces it too. */
+  supportRequestId: string | null;
   requestedBy: string;
   title: string;
-  brief: InvestigationBrief;
+  /** Already redacted and, for ticket text, sanitized. Stored verbatim on the run. */
+  sanitizedContext: Json;
   model: string;
   provider: string;
   tokenBudget: number;
   wallclockLimitSeconds: number;
 };
 
+/** The sanitized copy of a ticket a run is allowed to keep. Never the raw ticket. */
+export function briefSanitizedContext(brief: InvestigationBrief): Json {
+  return {
+    category: brief.category,
+    priority: brief.priority,
+    podLabel: brief.podLabel,
+    subject: brief.subject,
+    description: brief.description,
+    attachments: brief.attachmentSummary,
+    conversation: brief.conversation
+      ? {
+          entries: brief.conversation.entries,
+          internalExcluded: brief.conversation.internalExcluded,
+          droppedForBounds: brief.conversation.droppedForBounds,
+          deduplicatedDescription: brief.conversation.deduplicatedDescription,
+        }
+      : null,
+    freshness: brief.freshness,
+    provenance: brief.provenance,
+  } as unknown as Json;
+}
+
 export type RunSummary = {
   id: string;
-  supportRequestId: string;
+  supportRequestId: string | null;
+  source: RunSource;
   status: RunStatus;
   title: string;
   model: string;
@@ -66,10 +99,23 @@ export type RunSummary = {
 export type LabOpsStore = {
   listEligibleSupportRequests(limit?: number): Promise<SupportRequestRow[]>;
   getSupportRequest(id: string): Promise<SupportRequestRow | null>;
+  /** Non-internal conversation plus attachment metadata; internal notes never leave. */
+  getSupportConversation(supportRequestId: string): Promise<{
+    messages: SupportMessageRow[];
+    attachments: ConversationAttachmentMeta[];
+    /** How many internal notes were left behind, counted without reading their bodies. */
+    internalExcluded: number;
+  }>;
   getPodLabel(labAssignmentId: string | null): Promise<string | null>;
   countActiveRuns(): Promise<number>;
   monthToDateCostUsd(now?: Date): Promise<number>;
   createRun(input: CreateRunInput): Promise<RunRow>;
+  /** History page, newest first. `source` narrows it to ticket runs or direct chats. */
+  listRunPage(options?: {
+    limit?: number;
+    offset?: number;
+    source?: RunSource;
+  }): Promise<{ runs: RunRow[]; hasMore: boolean }>;
   attachConversation(runId: string, conversationId: string): Promise<void>;
   markRunStarted(runId: string): Promise<void>;
   updateRunStatus(
@@ -79,8 +125,25 @@ export type LabOpsStore = {
   ): Promise<void>;
   getRun(runId: string): Promise<RunRow | null>;
   listRuns(limit?: number): Promise<RunRow[]>;
+  /** Runs the database still considers in flight, oldest first. */
+  listActiveRuns(): Promise<RunRow[]>;
+  /**
+   * Records the container and volume an investigation was given, so a workspace found on
+   * the host after a restart can be attributed to a run and reaped.
+   */
+  recordWorkspace(input: {
+    runId: string;
+    containerName: string;
+    imageDigest: string;
+    volumeName: string;
+  }): Promise<void>;
+  markWorkspaceDestroyed(
+    runId: string,
+    disposition?: "destroyed" | "archived",
+  ): Promise<void>;
   runUsage(runId: string): Promise<UsageSnapshot>;
-  nextEventSeq(runId: string): Promise<number>;
+  /** Where a relay should resume from, so a reconnect never re-persists what it already has. */
+  eventCursor(runId: string): Promise<RelayCursor>;
   listEvents(
     runId: string,
     limit?: number,
@@ -110,17 +173,85 @@ export type LabOpsStore = {
   }): Promise<void>;
   recordUsage(runId: string, provider: string, model: string, usage: UsageSnapshot): Promise<void>;
   listApprovals(runId: string): Promise<ApprovalRow[]>;
+  /** Pending approvals across every investigation, for the LabOps approvals page. */
+  listPendingApprovals(limit?: number): Promise<Array<ApprovalRow & { runTitle: string }>>;
   getApproval(approvalId: string): Promise<ApprovalRow | null>;
   decideApproval(
     approvalId: string,
     decision: { status: "approved" | "rejected"; decidedBy: string; note?: string | null },
   ): Promise<ApprovalRow>;
+  /**
+   * Whether a Phase 2 write path is enabled. Defaults to false, including when the
+   * switch table does not exist yet, so an unmigrated database means "no writes".
+   */
+  isWriteEnabled(scope: string): Promise<boolean>;
+  /**
+   * Adds the reviewed findings as an internal system note on the ticket. Idempotent: a
+   * second call for the same run is a no-op. Never touches status, priority or a
+   * student-visible message.
+   */
+  publishFindingsNote(input: {
+    runId: string;
+    supportRequestId: string;
+    body: string;
+  }): Promise<{ created: boolean }>;
   recordIntegrationHealth(
     integration: string,
     status: Database["public"]["Tables"]["ai_integration_health"]["Row"]["status"],
     detail?: string | null,
   ): Promise<void>;
 };
+
+export type RelayCursor = {
+  /** Next sequence number in the persisted timeline. */
+  nextSeq: number;
+  /** Timestamp of the newest persisted event, as the agent reported it. */
+  since?: string;
+  /** Agent event ids already persisted, because the timestamp bound is inclusive. */
+  seenEventIds: string[];
+};
+
+export function relayCursorFromRows(
+  rows: readonly { seq: number; payload: unknown }[],
+): RelayCursor {
+  const payloads = rows.map((row) => (row.payload ?? {}) as Record<string, unknown>);
+  const timestamps = payloads
+    .map((payload) => payload.timestamp)
+    .filter((value): value is string => typeof value === "string");
+
+  return {
+    nextSeq: rows.reduce((highest, row) => Math.max(highest, row.seq), 0) + 1,
+    since: timestamps.sort().at(-1),
+    seenEventIds: payloads
+      .map((payload) => payload.agentEventId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  };
+}
+
+/**
+ * The action a held run is waiting on, read from the persisted timeline. The relay never
+ * re-sends an event it has already stored, so without this an operator who reloads the
+ * page is asked to allow or refuse a step with nothing describing it.
+ */
+export function pendingStepSummary(
+  rows: readonly { kind: string; payload: unknown }[],
+): string | null {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+
+    if (!/action/i.test(row.kind)) {
+      continue;
+    }
+
+    const payload = (row.payload ?? {}) as Record<string, unknown>;
+    const summary = typeof payload.summary === "string" ? payload.summary : null;
+    const toolName = typeof payload.toolName === "string" ? payload.toolName : null;
+
+    return summary ?? toolName ?? row.kind;
+  }
+
+  return null;
+}
 
 const investigableStatusList = ["open", "in_progress", "waiting_on_student"] as const;
 
@@ -133,6 +264,7 @@ export function summarizeRun(run: RunRow, usage: UsageSnapshot = zeroUsage): Run
   return {
     id: run.id,
     supportRequestId: run.support_request_id,
+    source: run.source,
     status: run.status,
     title: run.title,
     model: run.model,
@@ -179,6 +311,54 @@ export function createLabOpsStore(
       }
 
       return data ?? null;
+    },
+
+    /**
+     * Ordered non-internal messages plus attachment metadata. `is_internal` is filtered in
+     * the query and again during intake, so a staff note cannot reach the model even if this
+     * query is changed later.
+     */
+    async getSupportConversation(supportRequestId) {
+      const { data: messages, error } = await client
+        .from("support_messages")
+        .select("*")
+        .eq("support_request_id", supportRequestId)
+        .eq("is_internal", false)
+        .order("created_at", { ascending: true })
+        .limit(200);
+
+      if (error) {
+        throw new Error(`Could not read the ticket conversation: ${error.message}`);
+      }
+
+      const { count } = await client
+        .from("support_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("support_request_id", supportRequestId)
+        .eq("is_internal", true);
+      const internalExcluded = count ?? 0;
+      const messageIds = (messages ?? []).map((message) => message.id);
+
+      if (messageIds.length === 0) {
+        return { messages: [], attachments: [], internalExcluded };
+      }
+
+      // Metadata only: storage paths and signed URLs are never copied into a brief.
+      const { data: attachments } = await client
+        .from("support_attachments")
+        .select("support_message_id, file_name, mime_type, size_bytes")
+        .in("support_message_id", messageIds);
+
+      return {
+        messages: messages ?? [],
+        internalExcluded,
+        attachments: (attachments ?? []).map((attachment) => ({
+          messageId: attachment.support_message_id,
+          fileName: attachment.file_name,
+          mimeType: attachment.mime_type,
+          sizeBytes: attachment.size_bytes,
+        })),
+      };
     },
 
     /** Pod name only. The student's identity is deliberately never resolved here. */
@@ -231,18 +411,11 @@ export function createLabOpsStore(
         .from("ai_runs")
         .insert({
           support_request_id: input.supportRequestId,
+          source: input.source,
           requested_by: input.requestedBy,
           title: input.title,
           // Sanitized copy only: the brief has already been redacted and neutralized.
-          sanitized_context: {
-            category: input.brief.category,
-            priority: input.brief.priority,
-            podLabel: input.brief.podLabel,
-            subject: input.brief.subject,
-            description: input.brief.description,
-            attachments: input.brief.attachmentSummary,
-            provenance: input.brief.provenance,
-          } as unknown as Json,
+          sanitized_context: input.sanitizedContext,
           model: input.model,
           provider: input.provider,
           token_budget: input.tokenBudget,
@@ -331,6 +504,79 @@ export function createLabOpsStore(
       return data ?? [];
     },
 
+    /**
+     * One page of history. Reading a page at a time keeps the chat sidebar from pulling
+     * every run — and every run's transcript — into a single render.
+     */
+    async listRunPage({ limit = 20, offset = 0, source } = {}) {
+      let query = client
+        .from("ai_runs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit);
+
+      if (source) {
+        query = query.eq("source", source);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw new Error(`Could not read investigation history: ${error.message}`);
+      }
+
+      const rows = data ?? [];
+
+      return { runs: rows.slice(0, limit), hasMore: rows.length > limit };
+    },
+
+    async listActiveRuns() {
+      const { data, error } = await client
+        .from("ai_runs")
+        .select("*")
+        .in("status", activeRunStatuses)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        throw new Error(`Could not read active investigations: ${error.message}`);
+      }
+
+      return data ?? [];
+    },
+
+    async recordWorkspace({ runId, containerName, imageDigest, volumeName }) {
+      const { error } = await client.from("ai_run_workspaces").upsert(
+        {
+          run_id: runId,
+          container_name: containerName,
+          image_digest: imageDigest,
+          volume_name: volumeName,
+        },
+        { onConflict: "run_id" },
+      );
+
+      if (error) {
+        throw new Error(`Could not record the investigation workspace: ${error.message}`);
+      }
+    },
+
+    /**
+     * Destruction is recorded even when the row is missing (a workspace created before
+     * this table existed, or reaped as an orphan), so the absence of a row never blocks
+     * cleanup.
+     */
+    async markWorkspaceDestroyed(runId, disposition = "destroyed") {
+      const { error } = await client
+        .from("ai_run_workspaces")
+        .update({ destroyed_at: new Date().toISOString(), disposition })
+        .eq("run_id", runId)
+        .is("destroyed_at", null);
+
+      if (error) {
+        throw new Error(`Could not record workspace destruction: ${error.message}`);
+      }
+    },
+
     async runUsage(runId) {
       const { data, error } = await client
         .from("ai_model_usage")
@@ -352,19 +598,19 @@ export function createLabOpsStore(
       );
     },
 
-    async nextEventSeq(runId) {
+    async eventCursor(runId) {
       const { data, error } = await client
         .from("ai_run_events")
-        .select("seq")
+        .select("seq,payload")
         .eq("run_id", runId)
         .order("seq", { ascending: false })
-        .limit(1);
+        .limit(200);
 
       if (error) {
         throw new Error(`Could not read the investigation timeline: ${error.message}`);
       }
 
-      return (data?.[0]?.seq ?? 0) + 1;
+      return relayCursorFromRows(data ?? []);
     },
 
     async listEvents(runId, limit = 500) {
@@ -424,6 +670,7 @@ export function createLabOpsStore(
           kind: event.kind,
           payload: {
             source: event.source,
+            agentEventId: event.id,
             timestamp: event.timestamp,
             summary: event.summary,
             toolName: event.toolName,
@@ -500,6 +747,31 @@ export function createLabOpsStore(
       return data ?? [];
     },
 
+    /**
+     * Pending approvals with only the investigation title alongside them. Approvers see the
+     * sanitized action, never the support queue or the requester's identity.
+     */
+    async listPendingApprovals(limit = 50) {
+      const { data, error } = await client
+        .from("ai_approval_requests")
+        .select("*, ai_runs(title)")
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(limit);
+
+      if (error) {
+        throw new Error(`Could not read approval requests: ${error.message}`);
+      }
+
+      return (data ?? []).map((row) => {
+        const { ai_runs: run, ...approval } = row as ApprovalRow & {
+          ai_runs: { title: string } | null;
+        };
+
+        return { ...approval, runTitle: run?.title ?? "Investigation" };
+      });
+    },
+
     async getApproval(approvalId) {
       const { data, error } = await client
         .from("ai_approval_requests")
@@ -541,6 +813,71 @@ export function createLabOpsStore(
       }
 
       return data;
+    },
+
+    async isWriteEnabled(scope) {
+      const { data, error } = await client
+        .from("ai_write_switches")
+        .select("scope, enabled")
+        .in("scope", ["global", scope]);
+
+      // The switch table arrives with the Phase 2 migration. Until then — and if the
+      // read fails for any other reason — the answer is "not enabled".
+      if (error || !data || data.length < 2) {
+        return false;
+      }
+
+      return data.every((row) => row.enabled);
+    },
+
+    async publishFindingsNote({ runId, supportRequestId, body }) {
+      const { data: existing } = await client
+        .from("ai_findings_notes")
+        .select("run_id")
+        .eq("run_id", runId)
+        .maybeSingle();
+
+      if (existing) {
+        return { created: false };
+      }
+
+      const { data: message, error: messageError } = await client
+        .from("support_messages")
+        .insert({
+          support_request_id: supportRequestId,
+          author_user_id: null,
+          author_role: "system",
+          body,
+          is_internal: true,
+        })
+        .select("id")
+        .single();
+
+      if (messageError || !message) {
+        throw new Error(
+          `Could not add the internal findings note: ${messageError?.message ?? "unknown error"}`,
+        );
+      }
+
+      const { error: linkError } = await client.from("ai_findings_notes").insert({
+        run_id: runId,
+        support_request_id: supportRequestId,
+        support_message_id: message.id,
+      });
+
+      // A racing request already linked this run: the note it wrote is the one that
+      // counts, so remove the duplicate this call created.
+      if (linkError) {
+        await client.from("support_messages").delete().eq("id", message.id);
+
+        if (linkError.code === "23505" || linkError.code === "23514") {
+          return { created: false };
+        }
+
+        throw new Error(`Could not link the findings note: ${linkError.message}`);
+      }
+
+      return { created: true };
     },
 
     async recordIntegrationHealth(integration, status, detail = null) {

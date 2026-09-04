@@ -42,6 +42,8 @@ export type LabOpsCapability =
   | "read_investigations"
   | "start_investigation"
   | "cancel_investigation"
+  | "confirm_agent_step"
+  | "file_findings_note"
   | "decide_approval";
 
 export type PolicyDecision =
@@ -105,6 +107,20 @@ export function authorize(
         : deny(
             "Only the pilot operator may start or cancel an investigation during Phase 1.",
           );
+
+    // Every agent action is gated by the agent server's confirmation policy, so deciding
+    // one is the same authority as starting the run: the pilot operator's.
+    case "confirm_agent_step":
+      return isPilotOperator(identity, options.ownerEmail)
+        ? allow
+        : deny("Only the pilot operator may allow or refuse an agent step during Phase 1.");
+
+    // Writing a reviewed finding back onto a ticket stays with the pilot operator too:
+    // it is the only ticket write the console can make.
+    case "file_findings_note":
+      return isPilotOperator(identity, options.ownerEmail)
+        ? allow
+        : deny("Only the pilot operator may file findings on a ticket during Phase 1.");
 
     case "decide_approval":
       return canDecideApproval(identity.roles)

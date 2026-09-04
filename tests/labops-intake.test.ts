@@ -95,4 +95,24 @@ describe("LabOps AI support request intake", () => {
 
     expect(brief.prompt).toContain("contents not provided");
   });
+  it("reports internal notes the store filtered out, and message redactions", () => {
+    const brief = buildInvestigationBrief(request(), {
+      internalExcluded: 1,
+      messages: [
+        {
+          id: "msg-1",
+          support_request_id: "req-1",
+          author_user_id: "user-student-03",
+          author_role: "requester",
+          body: "My pfSense password is Sup3rSecret! and my email is james.sinclair@example.edu.",
+          is_internal: false,
+          created_at: "2026-08-24T12:05:00.000Z",
+        },
+      ],
+    });
+
+    expect(brief.provenance.internalMessagesExcluded).toBe(1);
+    expect(brief.provenance.redactions.length).toBeGreaterThan(0);
+    expect(JSON.stringify(brief)).not.toContain("Sup3rSecret!");
+  });
 });

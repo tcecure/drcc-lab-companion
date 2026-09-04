@@ -19,6 +19,7 @@ removing it later is a config change, not a rewrite.
 | Start an investigation | yes | yes | yes | yes | no | no |
 | Pause / cancel / resume own run | yes | yes | yes | yes | no | no |
 | … in the Phase 1 pilot | **owner only** | no | no | no | no | no |
+| Allow or refuse the agent action a run is held on | **owner only** | no | no | no | no | no |
 | More than one active investigation | no (capped at 1 in the pilot) | no | no | no | no | no |
 | Cancel anyone's run | yes | yes | no | no | no | no |
 | Read run timeline, sanitized output, artifacts | yes | yes | yes | yes | yes | no |
@@ -29,6 +30,37 @@ removing it later is a config change, not a rewrite.
 | **Approve** knowledge proposal → Wiki.js publish | yes | yes | no | no | yes | no |
 | Manage tool allow-lists, limits, model config | yes | no | no | no | no | no |
 | Read audit log | yes | yes | own actions | own actions | yes | no |
+
+## Phase 2 additions
+
+The LabOps roles (`super_admin`, `lab_admin`, `developer`, `support_analyst`) stay out of
+the portal-wide manager list in `lib/roles.ts`. They are recognized only by
+`lib/labops/policy.ts` and resolved only by `lib/labops/authz.ts`, so granting someone
+`support_analyst` gives them LabOps read access and nothing else in the portal.
+
+| Surface | Who reaches it | Enforced by |
+|---|---|---|
+| `/admin/support`, `/admin/support/<id>` (full ticket queue, student names, internal notes) | `admin` only | `requireAdmin()` — an approver cannot open it |
+| `/admin/labops`, `/admin/labops/<id>` | LabOps staff roles | `authorizeLabOpsRequest("read_investigations")` |
+| `/admin/labops/approvals` (sanitized actions only) | `admin`, `approver`, `super_admin` | `requireManager()` + `authorizeLabOpsRequest("decide_approval")` |
+| `/admin/approvals` (seats and enrolment) | unchanged | existing portal authorization |
+| "Investigate with LabOps AI" on a ticket | owner only during the pilot | `authorizeLabOpsRequest("start_investigation")` |
+| "File findings as internal note" on an investigation | owner only during the pilot | `authorizeLabOpsRequest("file_findings_note")` + `support_notes` switch |
+
+`/admin/labops/approvals` is deliberately a separate page from `/admin/approvals`: an
+approver who is not an admin must be able to decide a LabOps action without gaining the
+support queue, so the approvals page shows the action kind, its validated parameters, the
+investigation title and nothing about the requester or the ticket text.
+
+Phase 2 write actions are additionally gated by `public.ai_write_switches`, which ships with
+every scope disabled — `global`, `awx`, `github`, `wikijs`, `support_notes`. No role can
+enable a switch through the UI, and a database without the Phase 2 migration reads as
+disabled rather than erroring, so the write paths are inert until both the migration and
+the switch are deliberately turned on.
+
+The findings note is the only ticket write any role can cause: internal, attributed to
+`system` with a null author, one per investigation, and it never changes status, priority
+or the student-facing conversation.
 
 Rules that hold regardless of role:
 

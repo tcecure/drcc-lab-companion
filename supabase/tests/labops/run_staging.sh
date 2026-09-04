@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs the same behavioural checks as run.sh against a *staging* Supabase project,
-# through the Management API SQL endpoint. Never point this at production.
+# through the Management API SQL endpoint. Never point this at production: it seeds
+# fixture rows and commits them. There is no staging deployment any more, so the
+# production-safe substitute is prod_behaviour.sql, which rolls back everything it writes.
 #
 #   SUPABASE_ACCESS_TOKEN=... ./run_staging.sh <project-ref>
 #

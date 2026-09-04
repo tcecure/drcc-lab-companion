@@ -131,16 +131,18 @@ destroyed on completion, artifacts retained 30 days.
 
 ## 7. Delivery
 
-Staging first, on a `staging` hostname, behind explicit approval before production DNS.
-Everything lands as PRs; no migration runs unreviewed; every deployment change ships with
-rollback steps. `crc.ai.tcecure.com` availability is checked before and after each
+Superseded 2026-08-29: there is no staging environment, so delivery is production-first under
+[production-first-workflow.md](./production-first-workflow.md) — local validation, disabled
+write switches, additive changes, read-only production verification, one capability enabled at
+a time. Everything still lands as PRs; no migration runs unreviewed; every deployment change
+ships with rollback steps. `crc.ai.tcecure.com` availability is checked before and after each
 deployment.
 
 ## 8. Decisions recorded 2026-08-24
 
 | Question | Decision |
 |---|---|
-| Public hostname | `labops.drcc.digitalrcc.com`; staging validated first, production DNS only after approval (`checkpoint-dns-tls.md`) |
+| Public hostname | `labops.drcc.digitalrcc.com`; DNS already cut over with approval (`checkpoint-dns-tls.md`). The "staging validated first" half of this decision no longer applies — see `production-first-workflow.md` |
 | Host naming | `drcc-<purpose>-<number>`; this VM is `drcc-labops-01` |
 | Model provider | OpenAI API. All Bedrock/IAM requirements removed. Model + key are server-side env on `drcc-labops-01` only (`checkpoint-openai-config.md`) |
 | Ticket intake | `support_requests` only; no mailbox in Phase 1 |

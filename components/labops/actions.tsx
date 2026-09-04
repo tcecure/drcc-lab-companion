@@ -112,6 +112,54 @@ export function CancelInvestigationButton({ runId }: { runId: string }) {
   );
 }
 
+/**
+ * Files the reviewed findings on the source ticket as an internal note. Deliberately a
+ * separate, explicit click: the note is the only ticket write the console makes, and the
+ * gateway still refuses unless the support_notes write switch is on.
+ */
+export function FileFindingsNoteButton({ runId }: { runId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<string | null>(null);
+
+  return (
+    <div>
+      <button
+        className="button secondary"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          setOutcome(null);
+
+          try {
+            const payload = (await post(
+              `/api/labops/investigations/${runId}/findings-note`,
+            )) as { created?: boolean } | null;
+
+            setOutcome(
+              payload?.created
+                ? "Internal note added to the ticket."
+                : "This investigation was already filed on the ticket.",
+            );
+            router.refresh();
+          } catch (problem) {
+            setError(problem instanceof Error ? problem.message : "Could not file the note.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+        type="button"
+      >
+        {busy ? "Filing…" : "File findings as internal note"}
+      </button>
+      {outcome ? <p className="mt-2 text-sm text-cyan-200">{outcome}</p> : null}
+      {error ? <Problem>{error}</Problem> : null}
+    </div>
+  );
+}
+
 export function ApprovalDecision({ approvalId }: { approvalId: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -240,18 +288,106 @@ type Frame =
   | { type: "end"; status: string };
 
 /**
+ * The gate on every agent action. The agent server holds each proposed step until it is
+ * answered, so an investigation makes no progress without a decision here; refusing sends
+ * the reason back and lets the agent try something else instead of ending the run.
+ */
+export function StepDecision({
+  runId,
+  proposed,
+  onDecided,
+}: {
+  runId: string;
+  proposed: string | null;
+  onDecided: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const decide = async (accept: boolean) => {
+    setBusy(true);
+    setError(null);
+
+    try {
+      await post(`/api/labops/investigations/${runId}/step`, {
+        accept,
+        ...(accept || !reason.trim() ? {} : { reason: reason.trim() }),
+      });
+      setReason("");
+      onDecided();
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : "Could not send that decision.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-200/30 bg-amber-500/5 p-3">
+      <p className="text-sm font-semibold text-amber-100">
+        The agent is waiting for your decision on its next step.
+      </p>
+      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">
+        {proposed ?? "The proposed step has no description."}
+      </p>
+      <label className="mt-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Reason (sent to the agent when you refuse)
+        <input
+          className="input mt-1"
+          onChange={(event) => setReason(event.target.value)}
+          value={reason}
+        />
+      </label>
+      <div className="mt-2 flex items-center gap-3">
+        <button className="button" disabled={busy} onClick={() => decide(true)} type="button">
+          {busy ? "Sending…" : "Allow this step"}
+        </button>
+        <button
+          className="button secondary"
+          disabled={busy}
+          onClick={() => decide(false)}
+          type="button"
+        >
+          Refuse
+        </button>
+      </div>
+      {error ? <Problem>{error}</Problem> : null}
+    </div>
+  );
+}
+
+/**
  * Live agent activity for an active investigation, over the gateway's SSE relay. The
  * frames are already normalised and redacted server-side; the timeline is also persisted,
  * so closing this page loses nothing.
  */
-export function ActivityStream({ runId, initialStatus }: { runId: string; initialStatus: string }) {
+export function ActivityStream({
+  runId,
+  initialStatus,
+  canDecideSteps = false,
+  pendingStep = null,
+}: {
+  runId: string;
+  initialStatus: string;
+  /** Only the pilot operator may decide a step; the gateway enforces it regardless. */
+  canDecideSteps?: boolean;
+  /**
+   * The held action as already persisted. The relay does not re-send an event it has
+   * stored, so this is what an operator arriving after the fact has to decide on.
+   */
+  pendingStep?: string | null;
+}) {
   const router = useRouter();
   const [frames, setFrames] = useState<Frame[]>([]);
   const [status, setStatus] = useState(initialStatus);
   const [problem, setProblem] = useState<string | null>(null);
+  /** Bumped after a step decision, which reconnects the relay to follow the resumed run. */
+  const [generation, setGeneration] = useState(0);
   const finished = useRef(false);
 
   useEffect(() => {
+    finished.current = false;
     const source = new EventSource(`/api/labops/investigations/${runId}/activity`);
 
     const handle = (raw: MessageEvent) => {
@@ -290,7 +426,17 @@ export function ActivityStream({ runId, initialStatus }: { runId: string; initia
     };
 
     return () => source.close();
-  }, [router, runId]);
+  }, [generation, router, runId]);
+
+  const liveStep = frames.reduce<Frame | null>(
+    (latest, frame) =>
+      frame.type === "event" && /action/i.test(frame.event.kind) ? frame : latest,
+    null,
+  );
+  const proposed =
+    liveStep?.type === "event"
+      ? (liveStep.event.summary ?? liveStep.event.toolName ?? liveStep.event.kind)
+      : pendingStep;
 
   return (
     <div className="grid gap-3">
@@ -298,6 +444,22 @@ export function ActivityStream({ runId, initialStatus }: { runId: string; initia
         Live status: <span className="status-pill">{status.replaceAll("_", " ")}</span>
       </p>
       {problem ? <Problem>{problem}</Problem> : null}
+      {status === "awaiting_approval" && !canDecideSteps ? (
+        <p className="text-sm text-amber-200">
+          The agent is waiting for the pilot operator to allow or refuse its next step.
+        </p>
+      ) : null}
+      {status === "awaiting_approval" && canDecideSteps ? (
+        <StepDecision
+          onDecided={() => {
+            setStatus("running");
+            setProblem(null);
+            setGeneration((current) => current + 1);
+          }}
+          proposed={proposed}
+          runId={runId}
+        />
+      ) : null}
       <ol className="grid gap-2">
         {frames.map((frame, index) =>
           frame.type === "event" ? (
