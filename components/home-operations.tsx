@@ -55,9 +55,9 @@ export function HomeOperations({
   return (
     <section
       aria-label="Current DigitalRCC lab availability"
-      className="border-y border-cyan-100/15 bg-slate-950/35 px-4 py-5 sm:px-6"
+      className="home-operations"
     >
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <div>
             <p className="text-sm font-bold text-white">Lab capacity</p>
@@ -68,7 +68,7 @@ export function HomeOperations({
 
           <div
             aria-label="Current lab capacity utilization"
-            className="mt-4 grid h-8 gap-1.5"
+            className="mt-4 grid h-7 gap-1.5 sm:h-8"
             role="img"
             style={{
               gridTemplateColumns: `repeat(${segmentCount}, minmax(0, 1fr))`,
@@ -88,7 +88,7 @@ export function HomeOperations({
           </div>
         </div>
 
-        <div className="border-cyan-100/10 lg:min-w-52 lg:border-l lg:pl-6">
+        <div className="border-cyan-100/10 lg:min-w-56 lg:border-l lg:pl-7">
           <p className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
             <Radio aria-hidden="true" size={15} />
             Lab status
@@ -113,7 +113,7 @@ export function HomeOperationsFallback() {
     <section
       aria-busy="true"
       aria-label="Loading current lab availability"
-      className="border-y border-cyan-100/15 bg-slate-950/35 px-4 py-5 sm:px-6"
+      className="home-operations"
     >
       <div className="h-4 w-40 animate-pulse rounded-sm bg-white/10" />
       <div className="mt-5 grid h-8 grid-cols-20 gap-1.5">
