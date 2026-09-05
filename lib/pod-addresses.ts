@@ -8,5 +8,6 @@ export function getPodAddresses(seatNumber: number) {
   return {
     gatewayAddress: `10.51.${seatNumber}.1`,
     podNetwork: `10.50.${seatNumber}.0/24`,
+    sessionHostAddress: `10.50.${seatNumber}.20`,
   };
 }

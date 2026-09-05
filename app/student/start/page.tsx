@@ -61,7 +61,7 @@ export default async function StudentStartPage() {
             <Card eyebrow="Step 2" title="Review quick start">
               <BookOpenCheck className="text-cyan-300" size={24} />
               <p className="mt-4 text-sm leading-6 text-slate-300">
-                Review gateway access, your domain controller, pod layout, and
+                Review gateway access, your assigned server, pod layout, and
                 progress checks.
               </p>
             </Card>

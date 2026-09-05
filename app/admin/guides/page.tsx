@@ -25,7 +25,7 @@ const labFamilyIcons: Record<LabGuide["code"], LucideIcon> = {
 };
 
 const workspaceLabels: Record<LabGuide["workspace"], string> = {
-  dc: "Assigned domain controller",
+  server: "Assigned pod member server",
   firewall: "Assigned pod gateway",
   pod: "Assigned student pod",
 };

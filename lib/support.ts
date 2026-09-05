@@ -91,7 +91,7 @@ export const currentLabNotices: CurrentLabNotice[] = [
     area: "SC firewall labs",
     commands: ["http://10.51.XX.1"],
     guidance:
-      "Connect to PODXX-DC in Guacamole, open Edge or Firefox on that desktop, and browse to the address below with your pod number in place of XX. For Pod 06, use http://10.51.6.1. Sign in with the firewall credentials issued by your instructor; they are included in your handout and are not published here.",
+      "Connect to PODXX-SRV in Guacamole, open Edge or Firefox on that desktop, and browse to the address below with your pod number in place of XX. For Pod 06, use http://10.51.6.1. Sign in with the firewall credentials issued by your instructor; they are included in your handout and are not published here.",
     reason:
       "The remote-desktop gateway carries desktops and terminals, not websites. The separate PODXX-GW tile was removed.",
     symptom:
@@ -152,7 +152,7 @@ export const resolvedLabIssues: ResolvedLabIssue[] = [
   {
     issue: "The pod firewall page would not load from the lab desktop",
     resolution:
-      "Fixed on all 20 pods; http://10.51.XX.1 now opens from PODXX-DC.",
+      "Fixed on all 20 pods; http://10.51.XX.1 now opens from PODXX-SRV.",
   },
   {
     issue: "Some pod firewalls were offline",
@@ -168,8 +168,8 @@ export const expectedLabBehaviors: ExpectedLabBehavior[] = [
   },
   {
     description:
-      "All required work is possible without shared-server administrator rights, with the current-cohort exceptions documented above.",
-    title: "You are not an administrator on the shared server",
+      "You are a local administrator of PODXX-SRV and of nothing else. You are a standard user in acs-p01.local, you cannot sign in to a domain controller, and you cannot reach another pod's server. Active Directory work is done from your server with the management tools installed there.",
+    title: "Your administrator rights stop at your own server",
   },
   {
     description:
