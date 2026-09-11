@@ -17,18 +17,11 @@ async function handle(request: NextRequest) {
   const env = readServerEnv();
   const secret = env.MOODLE_SYNC_SECRET ?? env.CRON_SECRET;
 
-  if (!secret) {
-    return NextResponse.json(
-      { error: "MOODLE_SYNC_SECRET is not set." },
-      { status: 503 },
-    );
-  }
-
   const provided =
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
     request.nextUrl.searchParams.get("secret");
 
-  if (provided !== secret) {
+  if (!secret || provided !== secret) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
