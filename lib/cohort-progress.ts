@@ -379,6 +379,7 @@ export function summarizeStandings(rows: StandingRow[]) {
     completedAll: rows.filter((row) => row.status === "completed").length,
     inProgress: rows.filter((row) => row.status === "in_progress").length,
     notStarted: rows.filter((row) => row.status === "not_started").length,
+    unavailable: rows.filter((row) => row.status === "unavailable").length,
     labsCompleted: rows.reduce((sum, row) => sum + row.completed, 0),
     labsTotal: rows.reduce((sum, row) => sum + row.total, 0),
   };

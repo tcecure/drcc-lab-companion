@@ -139,8 +139,26 @@ describe("summarizeStandings", () => {
       completedAll: 1,
       inProgress: 0,
       notStarted: 1,
+      unavailable: 0,
       labsCompleted: 3,
       labsTotal: 6,
     });
+  });
+
+  it("counts a pod with no snapshot data separately so the outcomes reconcile", () => {
+    const summary = summarizeStandings(
+      buildCohortStandings(snapshotOf(), [
+        ...roster,
+        { podName: "Pod07", userId: "user-7", fullName: null, email: null },
+      ]),
+    );
+
+    expect(summary).toMatchObject({ students: 3, unavailable: 1 });
+    expect(
+      summary.completedAll +
+        summary.inProgress +
+        summary.notStarted +
+        summary.unavailable,
+    ).toBe(summary.students);
   });
 });

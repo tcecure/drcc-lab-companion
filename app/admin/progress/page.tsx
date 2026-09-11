@@ -243,7 +243,9 @@ export default async function AdminProgressPage({
       {standings.length ? (
         <Card
           eyebrow="Standings"
-          title={`${summary.completedAll} completed · ${summary.inProgress} in progress · ${summary.notStarted} not started`}
+          title={`${summary.completedAll} completed · ${summary.inProgress} in progress · ${summary.notStarted} not started${
+            summary.unavailable ? ` · ${summary.unavailable} without data` : ""
+          }`}
         >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[48rem] text-left text-sm">
@@ -398,7 +400,9 @@ export default async function AdminProgressPage({
             </ul>
           ) : (
             <p className="text-sm leading-6 text-slate-300">
-              Every graded lab was completed in this cohort.
+              {selectedStudent.status === "unavailable"
+                ? "No results were captured for this pod in this cohort, so there is nothing to score."
+                : "Every graded lab was completed in this cohort."}
             </p>
           )}
         </Card>
