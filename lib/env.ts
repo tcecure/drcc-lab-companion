@@ -32,6 +32,12 @@ const envSchema = z.object({
   LAB_STATUS_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(180),
   TRAINING_TRACKER_BASE_URL: z.string().url().optional(),
   TRAINING_TRACKER_API_TOKEN: z.string().optional(),
+  MOODLE_BASE_URL: z.string().url().optional(),
+  MOODLE_API_TOKEN: z.string().optional(),
+  MOODLE_TRACKED_COURSE_IDS: z.string().optional(),
+  MOODLE_EXCLUDED_ACCOUNT_PATTERNS: z.string().optional(),
+  MOODLE_SYNC_SECRET: z.string().optional(),
+  MOODLE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(20000),
 });
 
 export type ServerEnv = z.infer<typeof envSchema>;
@@ -72,9 +78,7 @@ export function readServerEnv() {
       value(process.env.SUPABASE_SERVICE_ROLE_KEY),
     CRON_SECRET: value(process.env.CRON_SECRET),
     EMAIL_DELIVERY_MODE: value(process.env.EMAIL_DELIVERY_MODE),
-    SUPPORT_EMAIL_DELIVERY_MODE: value(
-      process.env.SUPPORT_EMAIL_DELIVERY_MODE,
-    ),
+    SUPPORT_EMAIL_DELIVERY_MODE: value(process.env.SUPPORT_EMAIL_DELIVERY_MODE),
     SUPPORT_EMAIL: value(process.env.SUPPORT_EMAIL),
     SUPPORT_NOTIFY_EMAIL: value(process.env.SUPPORT_NOTIFY_EMAIL),
     SUPPORT_FROM_NAME: value(process.env.SUPPORT_FROM_NAME),
@@ -101,5 +105,13 @@ export function readServerEnv() {
     LAB_STATUS_MAX_AGE_SECONDS: value(process.env.LAB_STATUS_MAX_AGE_SECONDS),
     TRAINING_TRACKER_BASE_URL: value(process.env.TRAINING_TRACKER_BASE_URL),
     TRAINING_TRACKER_API_TOKEN: value(process.env.TRAINING_TRACKER_API_TOKEN),
+    MOODLE_BASE_URL: value(process.env.MOODLE_BASE_URL),
+    MOODLE_API_TOKEN: value(process.env.MOODLE_API_TOKEN),
+    MOODLE_TRACKED_COURSE_IDS: value(process.env.MOODLE_TRACKED_COURSE_IDS),
+    MOODLE_EXCLUDED_ACCOUNT_PATTERNS: value(
+      process.env.MOODLE_EXCLUDED_ACCOUNT_PATTERNS,
+    ),
+    MOODLE_SYNC_SECRET: value(process.env.MOODLE_SYNC_SECRET),
+    MOODLE_REQUEST_TIMEOUT_MS: value(process.env.MOODLE_REQUEST_TIMEOUT_MS),
   });
 }

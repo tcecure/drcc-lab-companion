@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/cohort-assignment",
       "schedule": "5 6 * * *"
+    },
+    {
+      "path": "/api/integrations/moodle/sync?mode=incremental",
+      "schedule": "20 * * * *"
+    },
+    {
+      "path": "/api/integrations/moodle/sync?mode=full",
+      "schedule": "40 7 * * *"
     }
   ]
 }
