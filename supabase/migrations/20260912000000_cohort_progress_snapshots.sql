@@ -43,6 +43,7 @@ alter table public.cohort_progress_snapshots enable row level security;
 create or replace function public.touch_cohort_progress_snapshots()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = now();
