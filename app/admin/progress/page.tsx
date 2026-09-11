@@ -18,6 +18,21 @@ type AdminProgressPageProps = {
   searchParams: Promise<{ pod?: string }>;
 };
 
+function cohortEyebrow(
+  currentCohortNumber: number | null,
+  shownCohortNumber: number | null,
+) {
+  if (shownCohortNumber === null) {
+    return currentCohortNumber
+      ? `Cohort ${currentCohortNumber} · no seats assigned`
+      : "No active cohort";
+  }
+
+  return shownCohortNumber === currentCohortNumber
+    ? `Active cohort ${shownCohortNumber}`
+    : `Cohort ${shownCohortNumber} · most recent assigned cohort`;
+}
+
 export default async function AdminProgressPage({
   searchParams,
 }: AdminProgressPageProps) {
@@ -25,19 +40,29 @@ export default async function AdminProgressPage({
   const supabase = createAdminClient();
   const env = readServerEnv();
   const currentCohortNumber = getCurrentCohortNumber();
-  const { data: assignments, error: assignmentError } = await supabase
+  const { data: allAssignments, error: assignmentError } = await supabase
     .from("student_cohort_assignments")
-    .select("user_id, pod_name, seat_number, status")
-    .eq("cohort_number", currentCohortNumber ?? -1)
+    .select("user_id, pod_name, seat_number, status, cohort_number")
     .neq("status", "cancelled")
     .not("seat_number", "is", null)
+    .order("cohort_number", { ascending: false })
     .order("seat_number", { ascending: true });
 
   if (assignmentError) {
     throw new Error(assignmentError.message);
   }
 
-  const userIds = (assignments ?? []).map((assignment) => assignment.user_id);
+  // Between cohorts nobody holds a seat in the current window, so fall back to
+  // the most recent cohort that does instead of showing an empty page.
+  const shownCohortNumber = (allAssignments ?? []).some(
+    (assignment) => assignment.cohort_number === currentCohortNumber,
+  )
+    ? currentCohortNumber
+    : ((allAssignments ?? [])[0]?.cohort_number ?? null);
+  const assignments = (allAssignments ?? []).filter(
+    (assignment) => assignment.cohort_number === shownCohortNumber,
+  );
+  const userIds = assignments.map((assignment) => assignment.user_id);
   const { data: profiles, error: profileError } = userIds.length
     ? await supabase
         .from("profiles")
@@ -52,7 +77,7 @@ export default async function AdminProgressPage({
   const profileById = new Map(
     (profiles ?? []).map((profile) => [profile.id, profile]),
   );
-  const roster = (assignments ?? []).flatMap((assignment) => {
+  const roster = assignments.flatMap((assignment) => {
     const podNumber = podNumberFromPodName(assignment.pod_name);
 
     return podNumber
@@ -85,11 +110,7 @@ export default async function AdminProgressPage({
   return (
     <AppShell roles={roles} title="Student Progress">
       <Card
-        eyebrow={
-          currentCohortNumber
-            ? `Active cohort ${currentCohortNumber}`
-            : "No active cohort"
-        }
+        eyebrow={cohortEyebrow(currentCohortNumber, shownCohortNumber)}
         title="Live training tracker"
       >
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -172,9 +193,33 @@ export default async function AdminProgressPage({
       ) : (
         <Card eyebrow="Student Detail" title="No assigned tracker">
           <p className="text-sm leading-6 text-slate-300">
-            No student with a valid pod assignment is available in the active
-            cohort.
+            No cohort has a student with a pod assignment yet. Every pod is
+            still graded automatically, so the trackers below stay available.
           </p>
+          <nav
+            aria-label="Pod trackers"
+            className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-5"
+          >
+            {Array.from({ length: 20 }, (_, index) =>
+              String(index + 1).padStart(2, "0"),
+            ).map((podNumber) => (
+              <a
+                className="button secondary justify-center"
+                href={
+                  getPodTrackerPageUrl(
+                    `Pod${podNumber}`,
+                    env.TRAINING_TRACKER_BASE_URL,
+                  ) ?? undefined
+                }
+                key={podNumber}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Pod{podNumber}
+                <ExternalLink aria-hidden="true" size={14} />
+              </a>
+            ))}
+          </nav>
         </Card>
       )}
     </AppShell>
