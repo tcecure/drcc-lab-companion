@@ -7,6 +7,7 @@ import {
   ClipboardCheck,
   Gauge,
   GraduationCap,
+  HeartHandshake,
   HelpCircle,
   Import,
   LayoutDashboard,
@@ -55,6 +56,12 @@ const adminNav: NavItem[] = [
   },
   { href: "/admin/guides", icon: BookOpen, label: "Current Lab Guides" },
   { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
+  {
+    adminOnly: true,
+    href: "/admin/community-impact",
+    icon: HeartHandshake,
+    label: "Community Impact",
+  },
   { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
   { href: "/admin/labops/chat", icon: Sparkles, label: "Ask LabOps AI" },
   {

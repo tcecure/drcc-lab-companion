@@ -472,6 +472,219 @@ export type Database = {
           },
         ];
       };
+      moodle_catalog_courses: {
+        Row: {
+          id: string;
+          moodle_course_id: number;
+          full_name: string;
+          short_name: string;
+          category_name: string | null;
+          visible: boolean;
+          start_date: string | null;
+          end_date: string | null;
+          tracked: boolean;
+          first_seen_at: string;
+          last_seen_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          moodle_course_id: number;
+          full_name: string;
+          short_name?: string;
+          category_name?: string | null;
+          visible?: boolean;
+          start_date?: string | null;
+          end_date?: string | null;
+          tracked?: boolean;
+          first_seen_at?: string;
+          last_seen_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          full_name?: string;
+          short_name?: string;
+          category_name?: string | null;
+          visible?: boolean;
+          start_date?: string | null;
+          end_date?: string | null;
+          tracked?: boolean;
+          last_seen_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      moodle_learners: {
+        Row: {
+          id: string;
+          moodle_user_id: number;
+          first_name: string;
+          last_name: string;
+          email: string | null;
+          username: string | null;
+          profile_id: string | null;
+          match_status: "matched" | "unmatched" | "conflict";
+          match_note: string | null;
+          is_excluded: boolean;
+          exclusion_reason: string | null;
+          first_seen_at: string;
+          last_seen_at: string;
+          last_synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          moodle_user_id: number;
+          first_name?: string;
+          last_name?: string;
+          email?: string | null;
+          username?: string | null;
+          profile_id?: string | null;
+          match_status?: "matched" | "unmatched" | "conflict";
+          match_note?: string | null;
+          is_excluded?: boolean;
+          exclusion_reason?: string | null;
+          first_seen_at?: string;
+          last_seen_at?: string;
+          last_synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          first_name?: string;
+          last_name?: string;
+          email?: string | null;
+          username?: string | null;
+          profile_id?: string | null;
+          match_status?: "matched" | "unmatched" | "conflict";
+          match_note?: string | null;
+          is_excluded?: boolean;
+          exclusion_reason?: string | null;
+          last_seen_at?: string;
+          last_synced_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      moodle_course_enrollments: {
+        Row: {
+          id: string;
+          moodle_user_id: number;
+          moodle_course_id: number;
+          role_shortname: string;
+          enrollment_status: "active" | "suspended" | "inactive";
+          completion_state: "complete" | "incomplete" | "unknown";
+          completed_at: string | null;
+          progress_percentage: number | null;
+          last_access_at: string | null;
+          first_enrolled_at: string | null;
+          first_seen_at: string;
+          last_seen_at: string;
+          last_synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          moodle_user_id: number;
+          moodle_course_id: number;
+          role_shortname?: string;
+          enrollment_status?: "active" | "suspended" | "inactive";
+          completion_state?: "complete" | "incomplete" | "unknown";
+          completed_at?: string | null;
+          progress_percentage?: number | null;
+          last_access_at?: string | null;
+          first_enrolled_at?: string | null;
+          first_seen_at?: string;
+          last_seen_at?: string;
+          last_synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          role_shortname?: string;
+          enrollment_status?: "active" | "suspended" | "inactive";
+          completion_state?: "complete" | "incomplete" | "unknown";
+          completed_at?: string | null;
+          progress_percentage?: number | null;
+          last_access_at?: string | null;
+          last_seen_at?: string;
+          last_synced_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      moodle_progress_snapshots: {
+        Row: {
+          id: string;
+          moodle_user_id: number;
+          moodle_course_id: number;
+          observed_at: string;
+          completion_state: "complete" | "incomplete" | "unknown";
+          progress_percentage: number | null;
+          last_access_at: string | null;
+          sync_run_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          moodle_user_id: number;
+          moodle_course_id: number;
+          observed_at?: string;
+          completion_state: "complete" | "incomplete" | "unknown";
+          progress_percentage?: number | null;
+          last_access_at?: string | null;
+          sync_run_id?: string | null;
+        };
+        Update: {
+          completion_state?: "complete" | "incomplete" | "unknown";
+          progress_percentage?: number | null;
+          last_access_at?: string | null;
+        };
+        Relationships: [];
+      };
+      moodle_sync_runs: {
+        Row: {
+          id: string;
+          mode: "full" | "incremental";
+          trigger_source: "scheduled" | "admin" | "manual";
+          status: "running" | "succeeded" | "failed";
+          started_at: string;
+          finished_at: string | null;
+          courses_seen: number;
+          learners_seen: number;
+          enrollments_seen: number;
+          enrollments_written: number;
+          error_message: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          mode: "full" | "incremental";
+          trigger_source?: "scheduled" | "admin" | "manual";
+          status?: "running" | "succeeded" | "failed";
+          started_at?: string;
+          finished_at?: string | null;
+          courses_seen?: number;
+          learners_seen?: number;
+          enrollments_seen?: number;
+          enrollments_written?: number;
+          error_message?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          status?: "running" | "succeeded" | "failed";
+          finished_at?: string | null;
+          courses_seen?: number;
+          learners_seen?: number;
+          enrollments_seen?: number;
+          enrollments_written?: number;
+          error_message?: string | null;
+        };
+        Relationships: [];
+      };
       moodle_courses: {
         Row: {
           id: string;
@@ -1847,8 +2060,40 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      moodle_roster_entries: {
+        Row: {
+          moodle_user_id: number;
+          first_name: string;
+          last_name: string;
+          email: string | null;
+          profile_id: string | null;
+          match_status: "matched" | "unmatched" | "conflict";
+          last_seen_at: string;
+          last_name_sort: string;
+          first_name_sort: string;
+          courses_enrolled: number;
+          courses_completed: number;
+          active_enrollments: number;
+          last_access_at: string | null;
+          latest_completed_at: string | null;
+          progress_percentage: number | null;
+          course_ids: number[];
+          course_names: string[];
+          active_course_names: string[];
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
+      moodle_impact_metrics: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      moodle_start_sync_run: {
+        Args: { run_mode: string; run_trigger: string };
+        Returns: string | null;
+      };
       current_user_has_role: {
         Args: { required_role: string };
         Returns: boolean;
