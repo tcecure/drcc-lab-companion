@@ -7,10 +7,11 @@ import { runMoodleSync, type SyncMode } from "@/lib/moodle/sync";
 export const dynamic = "force-dynamic";
 
 /**
- * Scheduled synchronization entry point. An internal scheduler calls this with
- * the shared secret: hourly with mode=incremental and once a day with
- * mode=full. The browser never calls it and the Moodle token never leaves the
- * server.
+ * Scheduled synchronization entry point. A scheduler calls this with the
+ * shared secret: hourly with mode=incremental and once a day with mode=full.
+ * The daily full run is a Vercel cron; the hourly incremental run comes from an
+ * external scheduler because the hosting plan allows one cron per day. The
+ * browser never calls it and the Moodle token never leaves the server.
  */
 async function handle(request: NextRequest) {
   const env = readServerEnv();
