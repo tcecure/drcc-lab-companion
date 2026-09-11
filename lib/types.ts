@@ -617,6 +617,55 @@ export type Database = {
         };
         Relationships: [];
       };
+      cohort_progress_snapshots: {
+        Row: {
+          cohort_number: number;
+          status: "interim" | "final";
+          captured_at: string;
+          finalized_at: string | null;
+          source: string;
+          tracker_last_run: string | null;
+          courses: Record<string, { name: string; labs: string[] }>;
+          pods: Record<
+            string,
+            Record<string, { completed: boolean; reason: string | null }>
+          >;
+          waived_labs: string[];
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          cohort_number: number;
+          status?: "interim" | "final";
+          captured_at?: string;
+          finalized_at?: string | null;
+          source?: string;
+          tracker_last_run?: string | null;
+          courses?: Record<string, { name: string; labs: string[] }>;
+          pods?: Record<
+            string,
+            Record<string, { completed: boolean; reason: string | null }>
+          >;
+          waived_labs?: string[];
+          note?: string | null;
+        };
+        Update: {
+          status?: "interim" | "final";
+          captured_at?: string;
+          finalized_at?: string | null;
+          source?: string;
+          tracker_last_run?: string | null;
+          courses?: Record<string, { name: string; labs: string[] }>;
+          pods?: Record<
+            string,
+            Record<string, { completed: boolean; reason: string | null }>
+          >;
+          waived_labs?: string[];
+          note?: string | null;
+        };
+        Relationships: [];
+      };
       moodle_progress_snapshots: {
         Row: {
           id: string;
