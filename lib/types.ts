@@ -2108,6 +2108,133 @@ export type Database = {
         };
         Relationships: [];
       };
+      moodle_activity_events: {
+        Row: {
+          id: string;
+          moodle_log_id: number;
+          moodle_user_id: number;
+          event_name: string;
+          component: string;
+          action: string;
+          target: string;
+          course_id: number | null;
+          origin: string;
+          source_ip: string | null;
+          occurred_at: string;
+          ingested_at: string;
+        };
+        Insert: {
+          id?: string;
+          moodle_log_id: number;
+          moodle_user_id: number;
+          event_name: string;
+          component?: string;
+          action?: string;
+          target?: string;
+          course_id?: number | null;
+          origin?: string;
+          source_ip?: string | null;
+          occurred_at: string;
+          ingested_at?: string;
+        };
+        Update: {
+          source_ip?: string | null;
+          occurred_at?: string;
+        };
+        Relationships: [];
+      };
+      moodle_login_failures: {
+        Row: {
+          id: string;
+          moodle_log_id: number;
+          moodle_user_id: number | null;
+          attempted_username: string;
+          reason: string;
+          source_ip: string | null;
+          occurred_at: string;
+          ingested_at: string;
+        };
+        Insert: {
+          id?: string;
+          moodle_log_id: number;
+          moodle_user_id?: number | null;
+          attempted_username?: string;
+          reason?: string;
+          source_ip?: string | null;
+          occurred_at: string;
+          ingested_at?: string;
+        };
+        Update: {
+          source_ip?: string | null;
+          occurred_at?: string;
+        };
+        Relationships: [];
+      };
+      guacamole_sessions: {
+        Row: {
+          id: string;
+          guac_history_id: number;
+          guac_username: string;
+          guac_user_id: number | null;
+          connection_name: string;
+          remote_host: string | null;
+          started_at: string;
+          ended_at: string | null;
+          ingested_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          guac_history_id: number;
+          guac_username: string;
+          guac_user_id?: number | null;
+          connection_name?: string;
+          remote_host?: string | null;
+          started_at: string;
+          ended_at?: string | null;
+          ingested_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          connection_name?: string;
+          remote_host?: string | null;
+          ended_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      integration_connector_health: {
+        Row: {
+          connector: string;
+          status: "ok" | "degraded" | "failed" | "unknown";
+          last_attempt_at: string | null;
+          last_success_at: string | null;
+          last_error: string | null;
+          cursor_value: number;
+          detail: Json;
+          updated_at: string;
+        };
+        Insert: {
+          connector: string;
+          status?: Database["public"]["Tables"]["integration_connector_health"]["Row"]["status"];
+          last_attempt_at?: string | null;
+          last_success_at?: string | null;
+          last_error?: string | null;
+          cursor_value?: number;
+          detail?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          status?: Database["public"]["Tables"]["integration_connector_health"]["Row"]["status"];
+          last_attempt_at?: string | null;
+          last_success_at?: string | null;
+          last_error?: string | null;
+          cursor_value?: number;
+          detail?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       moodle_roster_entries: {
@@ -2133,8 +2260,79 @@ export type Database = {
         };
         Relationships: [];
       };
+      moodle_live_operations_entries: {
+        Row: {
+          moodle_user_id: number;
+          first_name: string;
+          last_name: string;
+          email: string | null;
+          moodle_username: string | null;
+          profile_id: string | null;
+          match_status: "matched" | "unmatched" | "conflict";
+          last_name_sort: string;
+          first_name_sort: string;
+          cohort_number: number | null;
+          seat_number: number | null;
+          pod_name: string | null;
+          lab_username: string | null;
+          assignment_status:
+            | "queued"
+            | "notified"
+            | "active"
+            | "completed"
+            | null;
+          access_starts_at: string | null;
+          access_ends_at: string | null;
+          session_host: string | null;
+          courses_enrolled: number;
+          courses_completed: number;
+          active_enrollments: number;
+          progress_percentage: number | null;
+          course_ids: number[];
+          course_names: string[];
+          last_seen_in_moodle_at: string | null;
+          last_event_at: string | null;
+          last_event_name: string | null;
+          last_source_ip: string | null;
+          events_15m: number;
+          events_2h: number;
+          events_24h: number;
+          events_7d: number;
+          distinct_ips_7d: number;
+          activity_status:
+            | "active_now"
+            | "active_2h"
+            | "active_24h"
+            | "active_7d"
+            | "no_recent_activity";
+          guac_open_sessions: number;
+          guac_stale_open_sessions: number;
+          guac_open_connection_names: string[];
+          guac_last_session_started_at: string | null;
+          guac_last_connection_name: string | null;
+          guac_last_remote_host: string | null;
+          failed_logins_7d: number;
+          last_failed_login_at: string | null;
+          needs_attention: boolean;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
+      integration_connector_record: {
+        Args: {
+          connector_name: string;
+          succeeded: boolean;
+          new_cursor?: number | null;
+          error_text?: string | null;
+          new_detail?: Json | null;
+        };
+        Returns: undefined;
+      };
+      moodle_prune_activity: {
+        Args: { retain?: string };
+        Returns: number;
+      };
       moodle_impact_metrics: {
         Args: Record<string, never>;
         Returns: Json;

@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect Moodle activity events for Live Operations (protected portal route)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/drcc/moodle-sync.env
+ExecStart=/usr/bin/curl -sS -m 300 -o /var/log/drcc-moodle-activity.log -w "%%{http_code}\n" -H "Authorization: Bearer ${MOODLE_SYNC_SECRET}" "https://my.digitalrcc.com/api/integrations/moodle/activity"
+NoNewPrivileges=true
+PrivateTmp=true

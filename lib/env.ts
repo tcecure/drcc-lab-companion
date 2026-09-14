@@ -39,6 +39,7 @@ const envSchema = z.object({
   MOODLE_EXCLUDED_ACCOUNT_PATTERNS: z.string().optional(),
   MOODLE_SYNC_SECRET: z.string().optional(),
   MOODLE_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(20000),
+  GUACAMOLE_INGEST_SECRET: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof envSchema>;
@@ -115,5 +116,6 @@ export function readServerEnv() {
     ),
     MOODLE_SYNC_SECRET: value(process.env.MOODLE_SYNC_SECRET),
     MOODLE_REQUEST_TIMEOUT_MS: value(process.env.MOODLE_REQUEST_TIMEOUT_MS),
+    GUACAMOLE_INGEST_SECRET: value(process.env.GUACAMOLE_INGEST_SECRET),
   });
 }
