@@ -62,6 +62,12 @@ const adminNav: NavItem[] = [
     icon: HeartHandshake,
     label: "Community Impact",
   },
+  {
+    adminOnly: true,
+    href: "/admin/community-impact/live",
+    icon: Activity,
+    label: "Live Operations",
+  },
   { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
   { href: "/admin/labops/chat", icon: Sparkles, label: "Ask LabOps AI" },
   {

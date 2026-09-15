@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll Moodle activity every two minutes for Live Operations
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

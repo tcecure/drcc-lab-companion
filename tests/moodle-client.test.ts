@@ -35,6 +35,8 @@ describe("moodle client", () => {
       "core_course_get_courses_by_field",
       "core_enrol_get_enrolled_users",
       "core_completion_get_course_completion_status",
+      "local_drccops_get_recent_events",
+      "local_drccops_get_failed_logins",
     ]);
     expect(
       moodleReadFunctions.some((fn) =>

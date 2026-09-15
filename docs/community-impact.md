@@ -1,7 +1,9 @@
 # Community Impact (Moodle)
 
 Admin-only page at `/admin/community-impact`, backed by a read-only projection of
-the Moodle LMS at `https://crc.lms.tcecure.com`.
+the Moodle LMS at `https://crc.lms.tcecure.com`. This view is aggregate and
+PII-free; per-student operational and security detail lives in the admin-only
+Live Operations view — see [live-operations.md](live-operations.md).
 
 ## Metrics
 

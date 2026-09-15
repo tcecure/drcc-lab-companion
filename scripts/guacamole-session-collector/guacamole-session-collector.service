@@ -1,0 +1,11 @@
+[Unit]
+Description=DRCC Guacamole session collector (read-only history -> my.digitalrcc.com)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/drcc/guacamole-session-collector.env
+ExecStart=/usr/bin/python3 /opt/drcc/guacamole-session-collector/collector.py
+NoNewPrivileges=true
+PrivateTmp=true

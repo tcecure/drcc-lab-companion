@@ -9,6 +9,7 @@ import {
   RosterControls,
   RosterTable,
 } from "@/components/community-impact";
+import { ImpactViewSwitcher } from "@/components/impact-view-switcher";
 import { requireAdmin } from "@/lib/auth";
 import { buildRosterHref, parseRosterParams } from "@/lib/moodle/impact";
 import {
@@ -63,17 +64,21 @@ export default async function CommunityImpactPage({
           <p className="eyebrow">Moodle-derived reporting</p>
           <h2 className="mt-2 text-2xl font-bold">Community impact</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-            Every number below comes from a read-only Moodle synchronization.
-            Nothing is estimated or generated.
+            Aggregate enrollment and completion reporting from a read-only Moodle
+            synchronization. Nothing is estimated or generated. Per-student
+            operational and security detail lives in Live Operations.
           </p>
         </div>
-        <Link
-          className="button secondary"
-          href={buildRosterHref(params, { presentation: true })}
-        >
-          <Presentation aria-hidden="true" size={17} />
-          Presentation Mode
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <ImpactViewSwitcher current="impact" />
+          <Link
+            className="button secondary"
+            href={buildRosterHref(params, { presentation: true })}
+          >
+            <Presentation aria-hidden="true" size={17} />
+            Presentation Mode
+          </Link>
+        </div>
       </section>
       <ImpactCards metrics={metrics} />
       <CredibilityPanel metrics={metrics} />

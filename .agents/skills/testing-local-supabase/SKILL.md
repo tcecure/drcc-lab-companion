@@ -75,6 +75,45 @@ When the lead explicitly allows local seeding, generate deterministic rows strai
   production 401-without-secret behaviour. Test that separately/anonymously against the deployed
   environment if it matters.
 
+## Seeding cohort seats for /admin/progress (Student Progress)
+
+- Seats live in `public.student_cohort_assignments`. Constraints to respect when seeding:
+  `cohort_number > 0`, `seat_number` 1–20, `pod_name` must match `Pod01`…`Pod20`,
+  `status in ('queued','notified','active','completed','cancelled')`, unique `(cohort_number, seat_number)`
+  and unique `user_id` — so one seat per user; re-seat a user by updating/deleting the old row.
+- Each seat needs a matching `public.profiles` row for the name/email to render. There is **no**
+  `auth.users` → `profiles` trigger locally: create the auth user via the local Supabase admin API,
+  then INSERT the profile row manually with the same `id`.
+- The "current cohort" is computed in code from `lib/cohorts.ts` (window containing `now`), not from
+  the DB, so to test the between-cohorts fallback you change the *seed data's* `cohort_number`
+  rather than any date. Eyebrow strings are the discriminator:
+  `Active cohort N` / `Cohort N · most recent assigned cohort` / `Cohort N · no seats assigned` /
+  `No active cohort`.
+- Export `TRAINING_TRACKER_BASE_URL=https://training.status.tcecure.com` in the dev-server env;
+  that host and `/training/status/pod/NN` are reachable from the box, so the tracker iframe and the
+  20 empty-state pod links load real content. Verify link targets from the **saved full HTML**
+  (`/tmp/page_html_*.html`) — the stripped browser DOM truncates long hrefs.
+
+## Seeding cohort snapshots (per-cohort Student Progress standings)
+
+- `public.cohort_progress_snapshots` is one row per cohort (`status` `interim`|`final`,
+  `courses` family -> {name, labs[]}, `pods` `pod01` -> labId -> {completed, reason},
+  `waived_labs`). Recovered AWX artifacts may be **family-nested**; the DB expects a flat
+  `pod01 -> labId` map. Lab ids are globally unique, so flattening is lossless.
+- Insert the JSON with PostgreSQL dollar-quoting from a host-side Python/psql heredoc. `psql` runs
+  **inside** the `supabase_db_*` container, so `\copy`/`cat` of a host `/tmp/*.json` path fails —
+  embed the JSON in the statement instead.
+- Waiver arithmetic is the cheapest falsifiable assertion: with `waived_labs=["M3-L2"]` a 57-lab
+  payload must render `56` denominators and untouched pods `0/56` (never `1/57`).
+- The snapshot route (`/api/integrations/tracker/snapshot`, GET/POST) needs
+  `TRACKER_SNAPSHOT_SECRET` (or `CRON_SECRET`) exported in the dev-server env; auth is
+  `Authorization: Bearer <secret>` or `?secret=`. To prove a `final` row is frozen, compare
+  `status, captured_at, updated_at, md5(pods::text), md5(courses::text)` before/after the call.
+  Expect the call to legitimately create/refresh an `interim` row for the *active* cohort.
+- Useful probe: seat a pod that is **absent** from the snapshot. Expected `No data` / `0/0`; watch
+  for copy that implies success (a "completed everything" message on a 0/0 row) and for outcome
+  summary counts that omit the no-data rows.
+
 ## Devin Secrets Needed
 
 - None for the local stack. `SUPABASE_ACCESS_TOKEN` is only needed for **read-only** production

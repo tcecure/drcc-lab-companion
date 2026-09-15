@@ -12,6 +12,11 @@ export const moodleReadFunctions = [
   "core_course_get_courses_by_field",
   "core_enrol_get_enrolled_users",
   "core_completion_get_course_completion_status",
+  // local_drccops, a read-only plugin on the Moodle host. It exposes the
+  // standard log store so activity can be reported from real events instead of
+  // the coarse lastaccess timestamps the core functions provide.
+  "local_drccops_get_recent_events",
+  "local_drccops_get_failed_logins",
 ] as const;
 
 export type MoodleFunction = (typeof moodleReadFunctions)[number];
