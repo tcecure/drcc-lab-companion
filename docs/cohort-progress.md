@@ -56,6 +56,12 @@ of the cohort ending and always before the next cohort's reset.
 Re-running the route is safe. A `final` row is never rewritten, so a late or
 repeated call cannot overwrite a frozen cohort with post-reset state.
 
+In production the caller is `drcc-cohort-snapshot.timer` on the AWX host
+(192.168.1.103), running at `*:40` alongside the Moodle sync timer at `*:20`.
+Its bearer token lives in `/etc/drcc/cohort-snapshot.env` (root-only, mode 600)
+and in the Vercel `drcc-web` project as `TRACKER_SNAPSHOT_SECRET`; the run logs
+the response body to `/var/log/drcc-cohort-snapshot.log`.
+
 ## Backfilling a cohort that was never captured
 
 Cohort 1 closed before this feature existed and its pods have since been reset.
