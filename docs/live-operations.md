@@ -93,8 +93,14 @@ to write history or read `guacamole_user`. Role SQL:
 The collector (`scripts/guacamole-session-collector/`) runs on the Guacamole host
 under a systemd timer every two minutes, reads recent/open history rows, probes
 the Guacamole web endpoint for reachability, and POSTs the result with
-`GUACAMOLE_INGEST_SECRET`. Sessions still open after 24 hours are treated as stale
-records, not live users.
+`GUACAMOLE_INGEST_SECRET`.
+
+A row still open after 24 hours means guacd or the web application lost the
+session without writing an end date, so it is **stale, not live**: it is excluded
+from the live session count and from the "In a Guacamole session" filter, counts
+toward needs-attention, and is named as stale in both the list (`None live · 1
+stale`) and the student's session table (`Open over 24h — stale, not a live
+session`), so the two views cannot disagree about who is connected.
 
 ## Refresh, caching and freshness
 
@@ -125,7 +131,8 @@ records, not live users.
 - Failed logins for non-existent usernames have no Moodle user id, so they appear
   in the connector's totals but cannot be attributed to a learner.
 - Two orphaned Guacamole history rows from February 2026 (`POD01-WS01`) remain
-  open in Guacamole's history; they are reported as stale, not live.
+  open in Guacamole's history; they are reported as stale, not live, and will keep
+  flagging that lab account for attention until Guacamole's history is cleaned up.
 - Only the small subset of Moodle learners with a matching portal account gets
   cohort/pod/member-server mapping.
 - Presentation Mode is unchanged and remains aggregate-only.

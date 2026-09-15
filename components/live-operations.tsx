@@ -9,6 +9,7 @@ import {
 
 import { Card } from "@/components/card";
 import { formatDateTime } from "@/lib/format";
+import { isLiveSession, staleOpenSessionHours } from "@/lib/guacamole/sessions";
 import {
   buildLiveOpsHref,
   classifyFreshness,
@@ -38,6 +39,34 @@ export const liveOpsRefreshMs = 60_000;
 
 export const activityDataSourceNote =
   "Activity comes from real Moodle log events. Last Seen in Moodle is Moodle's coarse last-access timestamp and is never treated as live activity; a login, an existing session or an open browser tab on its own does not make anyone active.";
+
+/**
+ * Lab session summary for a table row. Stale open rows are named as stale
+ * instead of being dropped silently, so this cell and the student's Guacamole
+ * section can never disagree about who is connected.
+ */
+function describeLabSessions(
+  entry: Pick<
+    LiveOpsEntry,
+    | "guac_open_connection_names"
+    | "guac_open_sessions"
+    | "guac_stale_open_sessions"
+  >,
+) {
+  const stale = entry.guac_stale_open_sessions
+    ? `${entry.guac_stale_open_sessions} stale (open over ${staleOpenSessionHours}h)`
+    : null;
+
+  if (entry.guac_open_sessions < 1) {
+    return stale ? `None live · ${stale}` : "None open";
+  }
+
+  const connections = entry.guac_open_connection_names.length
+    ? ` · ${entry.guac_open_connection_names.join(", ")}`
+    : "";
+
+  return `${entry.guac_open_sessions} open${connections}${stale ? ` · ${stale}` : ""}`;
+}
 
 function displayName(entry: Pick<LiveOpsEntry, "first_name" | "last_name">) {
   return [entry.last_name, entry.first_name].filter(Boolean).join(", ") || "—";
@@ -259,11 +288,7 @@ export function LiveOpsControls({
         </label>
         <label className="flex flex-col gap-2 text-sm">
           <span className="font-semibold">Pod or server</span>
-          <select
-            className="input"
-            defaultValue={params.pod ?? ""}
-            name="pod"
-          >
+          <select className="input" defaultValue={params.pod ?? ""} name="pod">
             <option value="">All pods</option>
             {options.pods.map((pod) => (
               <option key={pod} value={pod}>
@@ -356,8 +381,8 @@ export function LiveOpsControls({
         </Link>
       </div>
       <p className="mt-4 text-sm text-slate-400">
-        This view refreshes itself every 60 seconds. It is read-only: there is no
-        control here that can suspend an account or disconnect a session.
+        This view refreshes itself every 60 seconds. It is read-only: there is
+        no control here that can suspend an account or disconnect a session.
       </p>
     </Card>
   );
@@ -428,11 +453,7 @@ export function LiveOpsTable({
                     ? formatDateTime(entry.last_seen_in_moodle_at)
                     : "—"}
                 </td>
-                <td>
-                  {entry.guac_open_sessions > 0
-                    ? `${entry.guac_open_sessions} open${entry.guac_open_connection_names.length ? ` · ${entry.guac_open_connection_names.join(", ")}` : ""}`
-                    : "None open"}
-                </td>
+                <td>{describeLabSessions(entry)}</td>
                 <td>
                   {entry.progress_percentage === null
                     ? "—"
@@ -572,7 +593,9 @@ export function StudentDetailDrawer({
                 {entry.session_host
                   ? `Session host ${entry.session_host}`
                   : "No session host recorded"}
-                {entry.lab_username ? ` · lab account ${entry.lab_username}` : ""}
+                {entry.lab_username
+                  ? ` · lab account ${entry.lab_username}`
+                  : ""}
               </dd>
             </div>
             <div>
@@ -585,9 +608,7 @@ export function StudentDetailDrawer({
                 {entry.access_ends_at
                   ? formatDateTime(entry.access_ends_at)
                   : "—"}
-                {entry.assignment_status
-                  ? ` · ${entry.assignment_status}`
-                  : ""}
+                {entry.assignment_status ? ` · ${entry.assignment_status}` : ""}
               </dd>
             </div>
             <div>
@@ -606,7 +627,8 @@ export function StudentDetailDrawer({
                 {entry.last_seen_in_moodle_at
                   ? formatDateTime(entry.last_seen_in_moodle_at)
                   : "—"}{" "}
-                — Moodle&apos;s coarse last-access value, not real-time activity.
+                — Moodle&apos;s coarse last-access value, not real-time
+                activity.
               </dd>
             </div>
           </dl>
@@ -715,7 +737,11 @@ export function StudentDetailDrawer({
                 <tr key={`${session.startedAt}-${session.connectionName}`}>
                   <td>{formatDateTime(session.startedAt)}</td>
                   <td>
-                    {session.endedAt ? formatDateTime(session.endedAt) : "Open"}
+                    {session.endedAt
+                      ? formatDateTime(session.endedAt)
+                      : isLiveSession(session)
+                        ? "Open"
+                        : `Open over ${staleOpenSessionHours}h — stale, not a live session`}
                   </td>
                   <td>{session.connectionName || "—"}</td>
                   <td>{session.remoteHost ?? "—"}</td>

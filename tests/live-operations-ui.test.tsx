@@ -121,9 +121,63 @@ describe("live operations rendering", () => {
     expect(summary).toContain("xl:grid-cols-4");
 
     const controls = renderToStaticMarkup(
-      <LiveOpsControls courses={[]} options={{ cohorts: [], pods: [] }} params={params} />,
+      <LiveOpsControls
+        courses={[]}
+        options={{ cohorts: [], pods: [] }}
+        params={params}
+      />,
     );
     expect(controls).toContain("md:grid-cols-4");
+  });
+
+  it("names a stale open session in the table instead of dropping it", () => {
+    const html = renderToStaticMarkup(
+      <LiveOpsTable
+        entries={[
+          {
+            ...entry,
+            guac_open_connection_names: [],
+            guac_open_sessions: 0,
+            guac_stale_open_sessions: 1,
+          },
+        ]}
+        params={params}
+        total={1}
+      />,
+    );
+
+    expect(html).toContain("None live");
+    expect(html).toContain("1 stale");
+    expect(html).not.toContain("None open");
+  });
+
+  it("labels a stale open session on the detail page as not live", () => {
+    const html = renderToStaticMarkup(
+      <StudentDetailDrawer
+        detail={{
+          courses: [],
+          entry: {
+            ...entry,
+            guac_open_sessions: 0,
+            guac_stale_open_sessions: 1,
+          },
+          events: [],
+          guacamoleSessions: [
+            {
+              connectionName: "POD11-SRV",
+              endedAt: null,
+              remoteHost: "73.20.1.9",
+              startedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+          ipHistory: [],
+          loginFailures: [],
+        }}
+        params={params}
+      />,
+    );
+
+    expect(html).toContain("stale, not a live session");
   });
 
   it("explains an empty table instead of implying an idle cohort", () => {
@@ -189,7 +243,7 @@ describe("live operations rendering", () => {
     expect(html).toContain("Sort last name");
     expect(html).toContain("Refresh now");
     expect(html).toContain("read-only");
-    expect(html).not.toContain("<button type=\"submit\" name=");
+    expect(html).not.toContain('<button type="submit" name=');
   });
 });
 
