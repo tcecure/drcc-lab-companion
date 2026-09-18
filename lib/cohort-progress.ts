@@ -7,7 +7,7 @@ import { readServerEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { podNumberFromPodName } from "@/lib/training-progress";
 
-const defaultTrackerBaseUrl = "https://training.status.tcecure.com";
+const defaultTrackerBaseUrl = "https://training.digitalrcc.com";
 
 const labResultSchema = z.object({
   completed: z.boolean(),
