@@ -10,7 +10,7 @@ export const metadata = {
 };
 
 /**
- * Public landing page for labops.drcc.digitalrcc.com: a sign-in box only, so the host
+ * Public landing page for labops.digitalrcc.com: a sign-in box only, so the host
  * never shows the student-facing portal home.
  */
 export default async function LabOpsLandingPage({

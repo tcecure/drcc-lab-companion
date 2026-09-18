@@ -26,16 +26,16 @@ describe("reading an assistant reply as Markdown", () => {
   });
 
   it("links the protocols a browser can safely follow", () => {
-    expect(isSafeHref("https://labops.drcc.digitalrcc.com/labops")).toBe(true);
+    expect(isSafeHref("https://labops.digitalrcc.com/labops")).toBe(true);
     expect(isSafeHref("http://192.168.1.103")).toBe(true);
     expect(isSafeHref("mailto:eddie.barlow@tcecure.com")).toBe(true);
 
-    expect(parseInline("see [the console](https://labops.drcc.digitalrcc.com/labops) now")).toEqual([
+    expect(parseInline("see [the console](https://labops.digitalrcc.com/labops) now")).toEqual([
       { type: "text", text: "see " },
       {
         type: "link",
         text: "the console",
-        href: "https://labops.drcc.digitalrcc.com/labops",
+        href: "https://labops.digitalrcc.com/labops",
       },
       { type: "text", text: " now" },
     ]);

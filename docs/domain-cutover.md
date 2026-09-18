@@ -50,16 +50,23 @@ edge; no service moves host and no internal address changes.
 
 ## Cutover status (2026-09-18)
 
-Done: `lms`, `awx`, `guac.01`, `guac.02`, `wiki`, `ide` — certificates issued and
-dual-serving; Moodle `wwwroot` + stored links + caches, AWX `hostname` and
-`CSRF_TRUSTED_ORIGINS` (both origins trusted), Wiki.js Site URL, the collector's
-`GUAC_WEB_URL`, and Vercel `MOODLE_BASE_URL` (applies on the next deployment).
+All eight names are dual-serving with their own certificate, and every application
+that stores its own base URL now uses the new name: Moodle `wwwroot` (plus the
+`tool_replace` run and a cache purge), AWX `hostname` and `CSRF_TRUSTED_ORIGINS`
+(both origins trusted, verified by a POST to `/api/login/` returning `401` rather
+than a CSRF `403`), Wiki.js Site URL, the collector's `GUAC_WEB_URL`, the LabOps
+gateway's `LABOPS_PUBLIC_URL`/`NEXT_PUBLIC_APP_URL` in `/etc/labops/gateway.env`, and
+Vercel's `MOODLE_BASE_URL` and `TRAINING_TRACKER_BASE_URL`.
 
-Outstanding: `training.digitalrcc.com` and `labops.digitalrcc.com` do not resolve at
-the authoritative nameservers, so neither has a certificate and
-`TRAINING_TRACKER_BASE_URL` in Vercel still points at `training.status.tcecure.com`.
-`ide.digitalrcc.com` returns `504`, matching `crc.ide.tcecure.com` — its backend
-(`192.168.1.61:3000`) is down, unrelated to the rename.
+Notes:
+
+- `ide.digitalrcc.com` returns `504`, exactly as `crc.ide.tcecure.com` does — the
+  backend (`192.168.1.61:3000`) is down and the IDE is no longer in use, so this is
+  unrelated to the rename.
+- `training` and `labops` took ~40 minutes and a delete/re-add in Namecheap before
+  the authoritative nameservers served them; the other six published in about a
+  minute. Query `156.154.132.200` directly rather than trusting a resolver's cache.
+- Old names are still live. Retire them only after a cohort has run on the new ones.
 
 ## Verification per name
 
