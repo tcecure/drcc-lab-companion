@@ -26,9 +26,12 @@ edge; no service moves host and no internal address changes.
 1. **DNS** — Namecheap `digitalrcc.com`, one `A` record per new host to
    `108.31.169.90`, TTL 5 minutes during the cutover. No URL-redirect records: they
    break ACME HTTP-01 validation.
-2. **Edge** — for each name, add the new vhost, issue the certificate
-   (`certbot --nginx -d <new name>`), and keep the old vhost serving a `301` to the
-   new name so links in flight, bookmarks and printed guides keep working.
+2. **Edge** — for each name, add a new vhost carrying the old one's proxy body
+   verbatim and issue its certificate (`certbot --nginx -d <new name>`). The old
+   vhost is left untouched, so both names serve the same backend (dual-serve) and
+   links in flight, bookmarks and printed guides keep working. Retiring an old name
+   later is a separate, reversible step: replace its `location /` with
+   `return 301 https://<new name>$request_uri`.
 3. **Applications** — each app that knows its own name has to be told the new one:
    - Moodle: `$CFG->wwwroot` in `/var/www/moodle/config.php`, then
      `php admin/tool/replace/cli/replace.php --search=https://crc.lms.tcecure.com
@@ -45,11 +48,24 @@ edge; no service moves host and no internal address changes.
 5. **Student-facing copy** — the six lab completion guides in `crc-awx-labops/docs`,
    their rendered PDFs in `public/guides/`, and the Wiki.js pages.
 
+## Cutover status (2026-09-18)
+
+Done: `lms`, `awx`, `guac.01`, `guac.02`, `wiki`, `ide` — certificates issued and
+dual-serving; Moodle `wwwroot` + stored links + caches, AWX `hostname` and
+`CSRF_TRUSTED_ORIGINS` (both origins trusted), Wiki.js Site URL, the collector's
+`GUAC_WEB_URL`, and Vercel `MOODLE_BASE_URL` (applies on the next deployment).
+
+Outstanding: `training.digitalrcc.com` and `labops.digitalrcc.com` do not resolve at
+the authoritative nameservers, so neither has a certificate and
+`TRAINING_TRACKER_BASE_URL` in Vercel still points at `training.status.tcecure.com`.
+`ide.digitalrcc.com` returns `504`, matching `crc.ide.tcecure.com` — its backend
+(`192.168.1.61:3000`) is down, unrelated to the rename.
+
 ## Verification per name
 
 ```bash
 curl -sSI https://<new name>/                    # 200/301/307, no TLS warning
-curl -sSI http://<old name>/                     # 301 to the new name
+curl -sSI https://<old name>/                    # still serving (dual-serve)
 openssl s_client -connect <new name>:443 -servername <new name> </dev/null 2>/dev/null \
   | openssl x509 -noout -subject -dates
 ```
@@ -61,12 +77,13 @@ redirect loop), and AWX needs a real login (CSRF failures only show on POST).
 
 Per name, and independent of the others:
 
-1. Restore the old vhost as the serving vhost (`git`-tracked copies are not kept on
-   the edge, so `cp /etc/nginx/sites-available/<old>.bak /etc/nginx/sites-enabled/<old>`),
-   `nginx -t && systemctl reload nginx`.
+1. Nothing to restore at the edge while both names serve: `rm
+   /etc/nginx/sites-enabled/<new name>` then `nginx -t && systemctl reload nginx` is
+   enough to take the new name out of service.
 2. Revert the application's own base URL (Moodle `wwwroot` + the reverse
    `tool_replace` run, AWX `hostname`/`CSRF_TRUSTED_ORIGINS`, Wiki.js Site URL).
-3. Revert the portal constants and `MOODLE_BASE_URL`, redeploy.
+3. Revert the portal constants and `MOODLE_BASE_URL`, redeploy. Moodle's config is
+   backed up on the LMS host as `/root/config.php.bak.<timestamp>`.
 
 The old DNS records stay in place throughout, so rollback never waits on DNS
 propagation. New certificates are left to expire; they are harmless once unused.
