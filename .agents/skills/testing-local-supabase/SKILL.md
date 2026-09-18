@@ -89,7 +89,7 @@ When the lead explicitly allows local seeding, generate deterministic rows strai
   rather than any date. Eyebrow strings are the discriminator:
   `Active cohort N` / `Cohort N · most recent assigned cohort` / `Cohort N · no seats assigned` /
   `No active cohort`.
-- Export `TRAINING_TRACKER_BASE_URL=https://training.status.tcecure.com` in the dev-server env;
+- Export `TRAINING_TRACKER_BASE_URL=https://training.digitalrcc.com` in the dev-server env;
   that host and `/training/status/pod/NN` are reachable from the box, so the tracker iframe and the
   20 empty-state pod links load real content. Verify link targets from the **saved full HTML**
   (`/tmp/page_html_*.html`) — the stripped browser DOM truncates long hrefs.

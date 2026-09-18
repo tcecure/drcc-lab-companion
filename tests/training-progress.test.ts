@@ -25,7 +25,7 @@ const payload = {
       completedAt: "2026-08-19T10:46:53.124205Z",
     },
   ],
-  trackerUrl: "https://training.status.tcecure.com/pod/01",
+  trackerUrl: "https://training.digitalrcc.com/pod/01",
 };
 
 describe("podNumberFromPodName", () => {
@@ -88,7 +88,7 @@ describe("unavailableProgress", () => {
     expect(progress.status).toBe("unavailable");
     expect(progress.modules).toEqual([]);
     expect(progress.trackerUrl).toBe(
-      "https://training.status.tcecure.com/pod/01",
+      "https://training.digitalrcc.com/pod/01",
     );
   });
 });
@@ -96,7 +96,7 @@ describe("unavailableProgress", () => {
 describe("getPodTrackerPageUrl", () => {
   it("links directly to the existing tracker page for the assigned pod", () => {
     expect(getPodTrackerPageUrl("Pod01")).toBe(
-      "https://training.status.tcecure.com/training/status/pod/01",
+      "https://training.digitalrcc.com/training/status/pod/01",
     );
     expect(getPodTrackerPageUrl("not-a-pod")).toBeNull();
   });

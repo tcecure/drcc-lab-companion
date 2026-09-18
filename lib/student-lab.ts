@@ -70,8 +70,8 @@ export function buildStudentLabIdentity(
     gatewayName: `${podName}-GW`,
     gatewayAddress,
     podNetwork,
-    guacamoleUrl: "https://crc.guac.01.tcecure.com/#/",
-    progressUrl: `https://training.status.tcecure.com/pod/${studentNumber}`,
+    guacamoleUrl: "https://guac.01.digitalrcc.com/#/",
+    progressUrl: `https://training.digitalrcc.com/pod/${studentNumber}`,
     artifactsPath: `C:\\CyberLab\\${podName}\\`,
     scArtifactsPath: `C:\\CyberLab\\${podName}\\SC-Artifacts\\`,
   };

@@ -1,6 +1,6 @@
 # Per-cohort progress snapshots
 
-The AWX training tracker (`https://training.status.tcecure.com`) grades live
+The AWX training tracker (`https://training.digitalrcc.com`) grades live
 infrastructure state, so it only ever describes the cohort currently sitting in
 the pods. Resetting and reseeding the six lab families for the next cohort
 erases the previous cohort's standings. `/admin/progress` therefore keeps a

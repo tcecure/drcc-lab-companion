@@ -9,7 +9,7 @@ pods' data.
 
 ```
 student_cohort_assignments.pod_name  ->  pod number (01-20)
-  ->  server-side GET https://training.status.tcecure.com/api/v1/pods/<NN>/progress
+  ->  server-side GET https://training.digitalrcc.com/api/v1/pods/<NN>/progress
       Authorization: Bearer <TRAINING_TRACKER_API_TOKEN>
   ->  validated payload rendered on /student and /student/training
 ```
@@ -22,7 +22,7 @@ to the browser and no CORS or CSP change is needed. Responses are never cached
 
 | Name | Purpose |
 | --- | --- |
-| `TRAINING_TRACKER_BASE_URL` | Tracker origin, defaults to `https://training.status.tcecure.com` |
+| `TRAINING_TRACKER_BASE_URL` | Tracker origin, defaults to `https://training.digitalrcc.com` |
 | `TRAINING_TRACKER_API_TOKEN` | Read-only bearer token, matches `POD_PROGRESS_API_TOKEN` on the tracker host |
 
 Both are set for production, preview, and development in the `drcc-web` Vercel

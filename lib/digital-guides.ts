@@ -55,7 +55,7 @@ export function replaceGuideTokens(
     domainName: identity?.domainName ?? "acs-p01.local",
     gatewayAddress: identity?.gatewayAddress ?? "10.51.XX.1",
     guacamoleUrl:
-      identity?.guacamoleUrl ?? "https://crc.guac.01.tcecure.com/#/",
+      identity?.guacamoleUrl ?? "https://guac.01.digitalrcc.com/#/",
     labUsername: identity?.labUsername ?? "studentXX",
     podName: identity?.podName ?? "PodXX",
     podPrefix: identity?.podPrefix ?? "PXX",

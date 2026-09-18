@@ -13,7 +13,7 @@ Configuration comes from the environment (see collector.env.example):
   GUAC_DB_NAME              guacamole_db
   GUAC_DB_USER              guac_portal_ro
   PGPASSWORD                password for that role
-  GUAC_WEB_URL              https://crc.guac.01.tcecure.com (optional reachability probe)
+  GUAC_WEB_URL              https://guac.01.digitalrcc.com (optional reachability probe)
   DRCC_INGEST_URL           https://my.digitalrcc.com/api/integrations/guacamole/sessions
   GUACAMOLE_INGEST_SECRET   bearer secret shared with the portal
   GUAC_LOOKBACK_HOURS       48

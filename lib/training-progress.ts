@@ -38,7 +38,7 @@ export type ProgressStatus = z.infer<typeof progressStatus>;
 export type ProgressModule = z.infer<typeof moduleSchema>;
 export type PodProgress = z.infer<typeof podProgressSchema>;
 
-const trackerBaseUrl = "https://training.status.tcecure.com";
+const trackerBaseUrl = "https://training.digitalrcc.com";
 
 export function podNumberFromPodName(podName: string | null | undefined) {
   const match = /^pod\s*-?(\d{1,2})$/i.exec((podName ?? "").trim());
