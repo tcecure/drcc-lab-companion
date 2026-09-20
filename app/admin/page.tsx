@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { Card, MetricCard } from "@/components/card";
@@ -49,21 +50,16 @@ export default async function AdminPage() {
   const active = (notifiedStudents ?? 0) + (activeStudents ?? 0);
 
   return (
-    <AppShell roles={roles} title="Admin Overview">
+    <AppShell roles={roles} title="Operations Overview">
       <LabStatusCard status={labStatus} />
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <MetricCard
-          helper="Students queued and waiting for a student number."
-          label="Queue Status"
-          value={queuedStudents ? `${queuedStudents} waiting` : "No waitlist"}
-        />
+      <section className="dashboard-metrics">
         <MetricCard
           helper="Students notified or inside an active access window."
           label="Active Students"
           value={active}
         />
         <MetricCard
-          helper="Awaiting the 1:00 AM Eastern assignment run."
+          helper="Waiting for an upcoming cohort assignment."
           label="Queued Students"
           value={queuedStudents ?? 0}
         />
@@ -73,34 +69,65 @@ export default async function AdminPage() {
           value={`${active} / ${capacity?.maximum_active ?? 20}`}
         />
         <MetricCard
-          helper="Submitted, queued, or on-hold hands-on lab requests."
-          label="Lab Request"
-          value={labRequests ?? 0}
-        />
-        <MetricCard
           helper="New or active student issues that need staff attention."
           href="/admin/support"
           label="Support Tickets"
           value={supportTickets ?? 0}
         />
       </section>
-      <section className="grid gap-4 md:grid-cols-2">
-        <Card eyebrow="Student Operations" title="Queue and Intake">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Action href="/admin/import" label="Import students" />
-            <Action href="/admin/queue" label="Student queue" />
-            <Action href="/admin/progress" label="Student progress" />
-            <Action href="/admin/approvals" label="Approvals" />
-            <Action href="/admin/email-jobs" label="Email jobs" />
-            <Action href="/admin/support" label="Support tickets" />
+      <section className="dashboard-section-grid">
+        <Card title="Student operations">
+          <p className="section-summary">
+            Manage intake, assignments, and student progress from one place.
+          </p>
+          <div className="dashboard-action-list">
+            <Action
+              detail={`${labRequests ?? 0} submitted, queued, or on hold`}
+              href="/admin/approvals"
+              label="Review lab requests"
+            />
+            <Action
+              detail={`${queuedStudents ?? 0} students awaiting placement`}
+              href="/admin/queue"
+              label="Manage the student queue"
+            />
+            <Action
+              detail="Review completion status across active pods"
+              href="/admin/progress"
+              label="View student progress"
+            />
+            <Action
+              detail="Add current students or prepare a future cohort"
+              href="/admin/import"
+              label="Import students"
+            />
           </div>
         </Card>
-        <Card eyebrow="Lab Operations" title="Environment Controls">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Action href="/admin/guides" label="Current lab guides" />
-            <Action href="/admin/lab-status" label="Lab metrics" />
-            <Action href="/admin/labs" label="Lab capacity" />
-            <Action href="/support" label="Support guidance" />
+        <Card title="Today’s priorities">
+          <p className="section-summary">
+            Open the operational areas most likely to need attention.
+          </p>
+          <div className="dashboard-action-list">
+            <Action
+              detail={`${supportTickets ?? 0} open or in-progress conversations`}
+              href="/admin/support"
+              label="Respond to support tickets"
+            />
+            <Action
+              detail="Inspect hosts, domain controllers, and pod health"
+              href="/admin/lab-status"
+              label="Review lab status"
+            />
+            <Action
+              detail="Confirm student seats and current pod assignments"
+              href="/admin/labs"
+              label="Check lab capacity"
+            />
+            <Action
+              detail="Review the same published guidance students use"
+              href="/admin/guides"
+              label="Open current lab guides"
+            />
           </div>
         </Card>
       </section>
@@ -108,13 +135,22 @@ export default async function AdminPage() {
   );
 }
 
-function Action({ href, label }: { href: string; label: string }) {
+function Action({
+  detail,
+  href,
+  label,
+}: {
+  detail: string;
+  href: string;
+  label: string;
+}) {
   return (
-    <Link
-      className="rounded-lg border border-cyan-200/15 bg-white/[0.05] px-4 py-3 text-sm font-bold text-cyan-100 hover:bg-white/[0.08]"
-      href={href}
-    >
-      {label}
+    <Link className="dashboard-action" href={href}>
+      <span>
+        <strong>{label}</strong>
+        <small>{detail}</small>
+      </span>
+      <ArrowRight aria-hidden="true" size={17} />
     </Link>
   );
 }

@@ -1,41 +1,148 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Clock3,
+  HelpCircle,
+  LockKeyhole,
+  Server,
+} from "lucide-react";
 import { Suspense } from "react";
 
 import { AppShell } from "@/components/app-shell";
-import { Card, MetricCard } from "@/components/card";
+import { Card } from "@/components/card";
 import { getProfile, getUserRoles, requireUser } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import {
   getStudentCohortAssignment,
   getStudentLabIdentity,
+  type StudentLabIdentity,
 } from "@/lib/student-lab";
-import { getPodProgress } from "@/lib/training-progress";
+import { getPodProgress, type ProgressStatus } from "@/lib/training-progress";
 
 export const dynamic = "force-dynamic";
 
-async function StudentProgressMetric({ podName }: { podName: string | null }) {
-  const progress = await getPodProgress(podName);
+const fallbackModules = [
+  { id: "AC", title: "Access Control" },
+  { id: "IA", title: "Identification & Authentication" },
+  { id: "SI", title: "System & Information Integrity" },
+  { id: "SC", title: "System & Communications Protection" },
+  { id: "MP", title: "Media Protection" },
+  { id: "PE", title: "Physical Protection" },
+];
+
+async function StudentTrainingOverview({
+  identity,
+}: {
+  identity: StudentLabIdentity;
+}) {
+  const progress = await getPodProgress(identity.podName);
+  const trackerAvailable = progress?.status !== "unavailable";
+  const modules = progress?.modules.length
+    ? progress.modules
+    : fallbackModules.map((module) => ({
+        ...module,
+        status: "not_started" as ProgressStatus,
+      }));
+  const currentModule = progress?.currentModule
+    ? modules.find((module) => module.id === progress.currentModule)
+    : (modules.find((module) => module.status === "in_progress") ?? modules[0]);
+  const overallPercentage = trackerAvailable
+    ? (progress?.overallPercentage ?? 0)
+    : null;
 
   return (
-    <MetricCard
-      helper={
-        !progress
-          ? "Live progress appears once your labs are verified."
-          : progress.status === "unavailable"
-            ? "The tracker is temporarily unavailable; completed work is not affected."
-            : `${progress.completedModules} of ${progress.totalModules} lab families complete.`
-      }
-      href="/student/training"
-      label="Lab Progress"
-      value={
-        !progress
-          ? "Pending"
-          : progress.status === "unavailable"
-            ? "Unavailable"
-            : `${progress.overallPercentage}%`
-      }
-    />
+    <>
+      <section className="training-focus">
+        <div className="training-focus-copy">
+          <p className="workspace-label">Continue your training</p>
+          <h2>{currentModule?.title ?? "Begin your lab orientation"}</h2>
+          <p>
+            {trackerAvailable
+              ? `${progress?.completedModules ?? 0} of ${progress?.totalModules ?? modules.length} lab families complete.`
+              : "Your live tracker is syncing. You can continue working while it reconnects."}
+          </p>
+
+          <div className="training-progress-summary">
+            <div className="training-progress-label">
+              <span>Overall progress</span>
+              <strong>
+                {overallPercentage === null
+                  ? "Syncing"
+                  : `${overallPercentage}%`}
+              </strong>
+            </div>
+            <div
+              aria-label="Overall training progress"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={overallPercentage ?? undefined}
+              className="training-progress-track"
+              role="progressbar"
+            >
+              <span style={{ width: `${overallPercentage ?? 0}%` }} />
+            </div>
+          </div>
+
+          <div className="training-focus-actions">
+            <Link className="button" href="/student/guides">
+              View lab guide
+              <ArrowRight aria-hidden="true" size={17} />
+            </Link>
+            <Link className="text-link" href="/student/training">
+              View full progress
+            </Link>
+          </div>
+        </div>
+        <div className="training-focus-identity">
+          <Server aria-hidden="true" size={30} strokeWidth={1.6} />
+          <span>Assigned environment</span>
+          <strong>{identity.podName}</strong>
+          <small>Student {identity.studentNumber}</small>
+        </div>
+      </section>
+
+      <section className="training-journey" aria-labelledby="journey-title">
+        <div className="section-heading-row">
+          <div>
+            <h2 id="journey-title">Training journey</h2>
+            <p>Follow the lab families in order and return anytime.</p>
+          </div>
+          <Link className="text-link" href="/student/training">
+            View details
+            <ArrowRight aria-hidden="true" size={16} />
+          </Link>
+        </div>
+        <ol className="journey-list">
+          {modules.map((module, index) => {
+            const status = module.status;
+            const current =
+              module.id === currentModule?.id && status !== "completed";
+
+            return (
+              <li
+                className={`journey-step journey-step-${status}${current ? " journey-step-current" : ""}`}
+                key={module.id}
+              >
+                <span className="journey-marker">
+                  {status === "completed" ? (
+                    <Check aria-hidden="true" size={16} />
+                  ) : status === "not_started" && !current ? (
+                    <LockKeyhole aria-hidden="true" size={13} />
+                  ) : (
+                    index + 1
+                  )}
+                </span>
+                <span>
+                  <strong>{module.id}</strong>
+                  <small>{module.title}</small>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+    </>
   );
 }
 
@@ -47,100 +154,87 @@ export default async function StudentPage() {
     getStudentCohortAssignment(user.id),
   ]);
   const identity = getStudentLabIdentity(assignment);
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0];
+  const displayName =
+    firstName || (identity ? `Student ${identity.studentNumber}` : "Student");
 
   return (
-    <AppShell roles={roles} title="Student Dashboard">
-      <Card
-        className="border-cyan-300/30"
-        eyebrow="Orientation"
-        title={
-          identity
-            ? `Start here, Student ${identity.studentNumber}`
-            : "Start here"
-        }
-      >
-        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-          <div className="max-w-3xl">
-            <p className="text-sm leading-6 text-slate-300">
-              Begin with your personalized welcome and quick-start guide before
-              opening the lab guides. Your pod names, usernames, addresses, and
-              links are filled in from your assigned student number.
-            </p>
-          </div>
-          <Link className="button shrink-0" href="/student/start">
-            Start Here
-            <ArrowRight size={17} />
-          </Link>
-        </div>
-      </Card>
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          helper="Your current lab cohort status."
-          label="Queue Status"
-          value={
-            assignment
-              ? assignment.seat_number === null
-                ? "In queue"
-                : assignment.status
-              : "Not queued"
-          }
-        />
-        <MetricCard
-          helper="Assigned at 1:00 AM Eastern on your session start date."
-          label="Seat"
-          value={identity ? identity.podName : "Pending"}
-        />
-        <MetricCard
-          helper="Standard completion window once access begins."
-          label="Access Window"
-          value="14 days"
-        />
+    <AppShell roles={roles} title={`Welcome back, ${displayName}`}>
+      {identity ? (
         <Suspense
           fallback={
-            <MetricCard
-              helper="Loading the latest lab verification."
-              href="/student/training"
-              label="Lab Progress"
-              value="Loading"
-            />
+            <section className="training-focus training-focus-loading">
+              Loading your training workspace…
+            </section>
           }
         >
-          <StudentProgressMetric podName={identity?.podName ?? null} />
+          <StudentTrainingOverview identity={identity} />
         </Suspense>
-      </section>
-      <section className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
-        <Card eyebrow="Account" title="Profile summary">
-          <dl className="grid gap-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-slate-400">Name</dt>
-              <dd className="font-bold">{profile?.full_name || user.email}</dd>
+      ) : (
+        <section className="training-focus">
+          <div className="training-focus-copy">
+            <p className="workspace-label">Start here</p>
+            <h2>Prepare for your DigitalRCC labs</h2>
+            <p>
+              Review the orientation while your student number and pod are being
+              assigned.
+            </p>
+            <Link className="button" href="/student/start">
+              Start orientation
+              <ArrowRight aria-hidden="true" size={17} />
+            </Link>
+          </div>
+        </section>
+      )}
+
+      <section className="student-dashboard-grid">
+        <Card title="Your lab access">
+          <div className="access-summary">
+            <div className="access-summary-icon">
+              <Clock3 aria-hidden="true" size={22} />
             </div>
             <div>
-              <dt className="text-slate-400">Status</dt>
-              <dd className="font-bold capitalize">
-                {profile?.account_status ?? "active"}
+              <p className="access-summary-label">Access window</p>
+              <p className="access-summary-value">
+                {assignment
+                  ? `${formatDate(assignment.access_starts_at)} – ${formatDate(assignment.access_ends_at)}`
+                  : "Pending cohort assignment"}
+              </p>
+            </div>
+          </div>
+          <dl className="detail-list">
+            <div>
+              <dt>Status</dt>
+              <dd className="capitalize">
+                {assignment?.status?.replaceAll("_", " ") ?? "Not queued"}
               </dd>
             </div>
             <div>
-              <dt className="text-slate-400">Organization</dt>
-              <dd className="font-bold">
-                {profile?.organization || "DigitalRCC Student"}
-              </dd>
+              <dt>Pod</dt>
+              <dd>{identity?.podName ?? "Pending"}</dd>
             </div>
             <div>
-              <dt className="text-slate-400">Roles</dt>
-              <dd className="font-bold">{roles.join(", ") || "student"}</dd>
+              <dt>Lab username</dt>
+              <dd>{identity?.labUsername ?? "Pending"}</dd>
             </div>
           </dl>
+          <Link className="text-link mt-5" href="/student/start">
+            Review connection details
+            <ArrowRight aria-hidden="true" size={16} />
+          </Link>
         </Card>
-        <Card eyebrow="Cohort Window" title="Hands-on access">
-          <p className="text-sm leading-6 text-slate-300">
-            {assignment
-              ? `Your access window is ${formatDate(assignment.access_starts_at)} through ${formatDate(assignment.access_ends_at)}.`
-              : "Your access window will appear here after you are assigned to a cohort."}
-          </p>
-          <Link className="button mt-5" href="/student/guides">
-            Open lab guides
+
+        <Card title="Need help?">
+          <div className="support-callout">
+            <HelpCircle aria-hidden="true" size={28} strokeWidth={1.6} />
+            <p>
+              Tell the cyber lab team what is happening and include the lab
+              family you are working on.
+            </p>
+          </div>
+          <Link className="button secondary mt-5" href="/student/support/new">
+            Open a support ticket
+            <ArrowRight aria-hidden="true" size={16} />
           </Link>
         </Card>
       </section>

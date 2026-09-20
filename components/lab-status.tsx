@@ -4,10 +4,10 @@ import { ArrowUpRight, Boxes, Clock3, Server, ShieldCheck } from "lucide-react";
 import type { LabStatusSummary } from "@/lib/proxmox/status";
 
 const colorClasses = {
-  gray: "border-slate-400/30 bg-slate-400/15 text-slate-100",
-  green: "border-cyan-300/40 bg-cyan-300/20 text-cyan-50",
-  red: "border-rose-300/40 bg-rose-400/20 text-rose-50",
-  yellow: "border-amber-300/45 bg-amber-300/20 text-amber-50",
+  gray: "border-slate-200 bg-slate-100 text-slate-700",
+  green: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  red: "border-rose-200 bg-rose-50 text-rose-700",
+  yellow: "border-amber-200 bg-amber-50 text-amber-700",
 };
 
 export function LabStatusCard({
@@ -28,8 +28,8 @@ export function LabStatusCard({
 
   const content = (
     <>
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5 xl:items-center">
-        <div className="sm:col-span-2 xl:col-span-1">
+      <div className="grid grid-cols-2 gap-5 xl:grid-cols-5 xl:items-center">
+        <div className="col-span-2 xl:col-span-1">
           <p className="eyebrow">Live metric</p>
           <div className="mt-2 flex items-center gap-2">
             <h2 className="text-base font-semibold">Lab Status</h2>
@@ -74,18 +74,18 @@ export function LabStatusCard({
           }))}
           unavailable={unavailable}
         />
-        <div className="min-w-0 xl:border-l xl:border-cyan-200/10 xl:pl-5">
-          <div className="flex items-center gap-2 text-slate-400">
+        <div className="min-w-0 xl:border-l xl:border-slate-200 xl:pl-5">
+          <div className="flex items-center gap-2 text-slate-500">
             <Clock3 aria-hidden="true" size={16} />
             <p className="text-xs font-bold uppercase">Last check</p>
           </div>
-          <p className="mt-2 text-base font-bold text-slate-100">{checkedAt}</p>
-          <p className="mt-1 truncate text-xs text-slate-400">
+          <p className="mt-2 text-base font-bold text-slate-900">{checkedAt}</p>
+          <p className="mt-1 truncate text-xs text-slate-500">
             Central · {status.source}
           </p>
         </div>
       </div>
-      <p className="mt-5 border-t border-cyan-200/10 pt-3 text-sm leading-6 text-slate-300">
+      <p className="mt-5 border-t border-slate-200 pt-3 text-sm leading-6 text-slate-600">
         {status.detail}
       </p>
     </>
@@ -98,7 +98,7 @@ export function LabStatusCard({
   return (
     <Link
       aria-label={`Lab Status: ${status.label}. Open detailed lab metrics`}
-      className="card group block transition-colors hover:border-cyan-300/35"
+      className="card group block transition-colors hover:border-cyan-600/30"
       href={href}
     >
       {content}
@@ -130,21 +130,21 @@ function StatusSegment({
     ? rows.map((row) => `${row.name}: ${row.status}`).join(" · ")
     : "No expected resources";
   const tone = unavailable
-    ? "text-slate-400"
+    ? "text-slate-500"
     : allOnline
-      ? "text-cyan-200"
+      ? "text-emerald-700"
       : issueTone === "red"
-        ? "text-rose-200"
-        : "text-amber-200";
+        ? "text-rose-700"
+        : "text-amber-700";
 
   return (
-    <div className="min-w-0 xl:border-l xl:border-cyan-200/10 xl:pl-5">
-      <div className="flex items-center gap-2 text-slate-400">
+    <div className="min-w-0 xl:border-l xl:border-slate-200 xl:pl-5">
+      <div className="flex items-center gap-2 text-slate-500">
         <Icon aria-hidden="true" size={16} />
         <p className="text-xs font-bold uppercase">{label}</p>
       </div>
       <p className={`mt-2 text-base font-bold ${tone}`}>{value}</p>
-      <p className="mt-1 truncate text-xs text-slate-400" title={detail}>
+      <p className="mt-1 truncate text-xs text-slate-500" title={detail}>
         {detail}
       </p>
     </div>

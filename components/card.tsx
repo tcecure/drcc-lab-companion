@@ -34,14 +34,12 @@ export function MetricCard({
   value: string | number;
 }) {
   const metric = (
-    <Card eyebrow="Live metric">
-      <div className="flex items-start justify-between gap-4">
-        <h2 className="text-base font-semibold">{label}</h2>
-        <p className="text-3xl font-bold">{value}</p>
-      </div>
-      <p className="mt-5 text-sm leading-6 text-slate-300">{helper}</p>
+    <Card className="metric-card">
+      <p className="metric-card-label">{label}</p>
+      <p className="metric-card-value">{value}</p>
+      <p className="metric-card-helper">{helper}</p>
       {href ? (
-        <span className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-cyan-200">
+        <span className="metric-card-action">
           View details
           <ArrowRight aria-hidden="true" size={16} />
         </span>
@@ -52,7 +50,7 @@ export function MetricCard({
   return href ? (
     <Link
       aria-label={`View ${label} details`}
-      className="group block rounded-xl transition duration-200 hover:-translate-y-0.5 hover:[&_.card]:border-cyan-300/50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300"
+      className="metric-card-link"
       href={href}
       prefetch={true}
     >

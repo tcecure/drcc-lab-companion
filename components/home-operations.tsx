@@ -4,24 +4,24 @@ import type { PublicOperationsSummary } from "@/lib/public-operations";
 
 const statusDetails = {
   gray: {
-    dot: "bg-slate-300",
+    dot: "bg-slate-400",
     label: "Status updating",
-    text: "text-slate-300",
+    text: "text-slate-600",
   },
   green: {
-    dot: "bg-cyan-300",
+    dot: "bg-emerald-500",
     label: "Labs operational",
-    text: "text-cyan-100",
+    text: "text-emerald-700",
   },
   red: {
     dot: "bg-rose-400",
     label: "Labs unavailable",
-    text: "text-rose-100",
+    text: "text-rose-700",
   },
   yellow: {
     dot: "bg-amber-300",
     label: "Limited availability",
-    text: "text-amber-100",
+    text: "text-amber-700",
   },
 };
 
@@ -60,8 +60,8 @@ export function HomeOperations({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <div>
-            <p className="text-sm font-bold text-white">Lab capacity</p>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="text-sm font-bold text-slate-900">Lab capacity</p>
+            <p className="mt-1 text-xs text-slate-500">
               Current student seat allocation
             </p>
           </div>
@@ -79,8 +79,8 @@ export function HomeOperations({
                 aria-hidden="true"
                 className={`rounded-sm border ${
                   index < filledSegments
-                    ? "border-cyan-200/50 bg-cyan-300/65"
-                    : "border-slate-600/45 bg-slate-800/70"
+                    ? "border-blue-300 bg-blue-500"
+                    : "border-slate-200 bg-slate-100"
                 }`}
                 key={index}
               />
@@ -88,8 +88,8 @@ export function HomeOperations({
           </div>
         </div>
 
-        <div className="border-cyan-100/10 lg:min-w-56 lg:border-l lg:pl-7">
-          <p className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-400">
+        <div className="border-slate-200 lg:min-w-56 lg:border-l lg:pl-7">
+          <p className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-500">
             <Radio aria-hidden="true" size={15} />
             Lab status
           </p>
@@ -115,12 +115,12 @@ export function HomeOperationsFallback() {
       aria-label="Loading current lab availability"
       className="home-operations"
     >
-      <div className="h-4 w-40 animate-pulse rounded-sm bg-white/10" />
+      <div className="h-4 w-40 animate-pulse rounded-sm bg-slate-200" />
       <div className="mt-5 grid h-8 grid-cols-20 gap-1.5">
         {Array.from({ length: 20 }, (_, index) => (
           <span
             aria-hidden="true"
-            className="rounded-sm border border-slate-600/40 bg-slate-800/60"
+            className="rounded-sm border border-slate-200 bg-slate-100"
             key={index}
           />
         ))}

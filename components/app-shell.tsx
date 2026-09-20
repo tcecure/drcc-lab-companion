@@ -1,98 +1,10 @@
-import Link from "next/link";
-import {
-  Activity,
-  Bell,
-  Bot,
-  BookOpen,
-  ClipboardCheck,
-  Gauge,
-  GraduationCap,
-  HeartHandshake,
-  HelpCircle,
-  Import,
-  LayoutDashboard,
-  ListChecks,
-  LogOut,
-  Mail,
-  MessageSquareText,
-  Sparkles,
-  Server,
-  ShieldCheck,
-  User,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { BrandLogo } from "@/components/brand-logo";
+import { PortalNavigation } from "@/components/portal-navigation";
 import { logoutAction } from "@/lib/actions/auth";
 import { canManage, isAdmin, type PortalRole } from "@/lib/roles";
-
-type NavItem = {
-  adminOnly?: boolean;
-  href: string;
-  icon: LucideIcon;
-  label: string;
-};
-
-const studentNav: NavItem[] = [
-  { href: "/student", icon: LayoutDashboard, label: "Overview" },
-  { href: "/student/guides", icon: BookOpen, label: "Lab Guides" },
-  { href: "/student/labs", icon: Server, label: "Labs" },
-  { href: "/student/queue", icon: ListChecks, label: "Queue Status" },
-  { href: "/student/training", icon: GraduationCap, label: "Training" },
-  { href: "/student/notifications", icon: Bell, label: "Notifications" },
-  { href: "/student/profile", icon: User, label: "Profile" },
-  { href: "/student/support", icon: HelpCircle, label: "Support" },
-];
-
-const adminNav: NavItem[] = [
-  { href: "/admin", icon: ShieldCheck, label: "Admin Overview" },
-  {
-    adminOnly: true,
-    href: "/admin/users",
-    icon: Users,
-    label: "User Management",
-  },
-  { href: "/admin/guides", icon: BookOpen, label: "Current Lab Guides" },
-  { href: "/admin/lab-status", icon: Activity, label: "Lab Metrics" },
-  {
-    adminOnly: true,
-    href: "/admin/community-impact",
-    icon: HeartHandshake,
-    label: "Community Impact",
-  },
-  {
-    adminOnly: true,
-    href: "/admin/community-impact/live",
-    icon: Activity,
-    label: "Live Operations",
-  },
-  { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
-  { href: "/admin/labops/chat", icon: Sparkles, label: "Ask LabOps AI" },
-  {
-    href: "/admin/labops/approvals",
-    icon: ClipboardCheck,
-    label: "LabOps Approvals",
-  },
-  {
-    adminOnly: true,
-    href: "/admin/support",
-    icon: MessageSquareText,
-    label: "Support Tickets",
-  },
-  { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals" },
-  { href: "/admin/queue", icon: Users, label: "Student Queue" },
-  {
-    href: "/admin/progress",
-    icon: GraduationCap,
-    label: "Student Progress",
-  },
-  { href: "/admin/import", icon: Import, label: "Import Students" },
-  { href: "/admin/email-jobs", icon: Mail, label: "Email Jobs" },
-  { href: "/admin/labs", icon: Gauge, label: "Lab Capacity" },
-  { href: "/support", icon: HelpCircle, label: "Support Guidance" },
-];
 
 export function AppShell({
   children,
@@ -104,55 +16,64 @@ export function AppShell({
   title: string;
 }) {
   const manager = canManage(roles);
-  const nav = manager
-    ? adminNav.filter((item) => !item.adminOnly || isAdmin(roles))
-    : studentNav;
+  const workspace = manager ? "admin" : "student";
+  const primaryRole = isAdmin(roles)
+    ? "Administrator"
+    : manager
+      ? "Approver"
+      : "Student";
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell app-shell-${workspace}`}>
       <aside className="sidebar">
-        <div className="flex items-center gap-3 border-b border-cyan-200/10 pb-5">
+        <div className="sidebar-brand">
           <BrandLogo />
-          <div>
-            <p className="font-bold">DigitalRCC</p>
-            <p className="text-xs text-slate-400">Lab Companion</p>
+          <div className="min-w-0">
+            <p className="sidebar-brand-name">DigitalRCC</p>
+            <p className="sidebar-brand-product">Lab Companion</p>
           </div>
         </div>
-        <nav className="grid gap-1">
-          {nav.map((item) => (
-            <Link className="sidebar-link" href={item.href} key={item.href}>
-              <item.icon size={17} />
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </nav>
-        <form action={logoutAction} className="mt-auto">
-          <button
-            className="sidebar-link w-full border-0 bg-transparent text-left"
-            type="submit"
-          >
-            <LogOut size={17} />
-            <span>Log out</span>
-          </button>
-        </form>
+
+        <div className="sidebar-workspace">
+          {manager ? "Admin console" : "Student portal"}
+        </div>
+
+        <PortalNavigation isAdministrator={isAdmin(roles)} mode={workspace} />
+
+        <div className="sidebar-footer">
+          <div className="sidebar-account">
+            <span aria-hidden="true" className="sidebar-account-avatar">
+              {primaryRole.slice(0, 1)}
+            </span>
+            <div>
+              <p>{primaryRole}</p>
+              <span>DigitalRCC access</span>
+            </div>
+          </div>
+          <form action={logoutAction}>
+            <button
+              aria-label="Log out"
+              className="sidebar-logout"
+              title="Log out"
+              type="submit"
+            >
+              <LogOut aria-hidden="true" size={17} />
+            </button>
+          </form>
+        </div>
       </aside>
+
       <section className="main-area">
         <header className="topbar">
           <div>
-            <p className="eyebrow">
-              {manager ? "Administration Workspace" : "Student Workspace"}
+            <p className="workspace-label">
+              {manager ? "Administration" : "My training"}
             </p>
-            <h1 className="mt-2 text-3xl font-bold">{title}</h1>
+            <h1>{title}</h1>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {roles.map((role) => (
-              <span className="status-pill" key={role}>
-                {role}
-              </span>
-            ))}
-          </div>
+          <span className="topbar-role">{primaryRole}</span>
         </header>
-        <div className="mt-6 grid gap-6">{children}</div>
+        <div className="page-content">{children}</div>
       </section>
     </main>
   );

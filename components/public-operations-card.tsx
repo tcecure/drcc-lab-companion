@@ -5,23 +5,23 @@ import type { PublicOperationsSummary } from "@/lib/public-operations";
 const statusDetails = {
   gray: {
     label: "Status updating",
-    tone: "bg-slate-300",
-    valueTone: "text-slate-200",
+    tone: "bg-slate-400",
+    valueTone: "text-slate-600",
   },
   green: {
     label: "Operational",
-    tone: "bg-cyan-300",
-    valueTone: "text-cyan-100",
+    tone: "bg-emerald-500",
+    valueTone: "text-emerald-700",
   },
   red: {
     label: "Unavailable",
     tone: "bg-rose-400",
-    valueTone: "text-rose-100",
+    valueTone: "text-rose-700",
   },
   yellow: {
     label: "Limited availability",
     tone: "bg-amber-300",
-    valueTone: "text-amber-100",
+    valueTone: "text-amber-700",
   },
 };
 
@@ -43,7 +43,7 @@ export function PublicOperationsCard({
   return (
     <section aria-labelledby="operations-title" className="card w-full">
       <div className="flex items-center gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-md border border-cyan-200/20 bg-cyan-300/10 text-cyan-100">
+        <span className="grid size-10 shrink-0 place-items-center rounded-md border border-cyan-200 bg-cyan-50 text-cyan-700">
           <Activity aria-hidden="true" size={19} />
         </span>
         <div>
@@ -54,22 +54,22 @@ export function PublicOperationsCard({
         </div>
       </div>
 
-      <dl className="mt-5 divide-y divide-cyan-100/10 border-y border-cyan-100/10">
+      <dl className="mt-5 divide-y divide-slate-200 border-y border-slate-200">
         <div className="flex items-center justify-between gap-4 py-4">
-          <dt className="flex items-center gap-2 text-sm text-slate-300">
-            <Users aria-hidden="true" className="text-cyan-200" size={17} />
+          <dt className="flex items-center gap-2 text-sm text-slate-600">
+            <Users aria-hidden="true" className="text-cyan-700" size={17} />
             Active students
           </dt>
-          <dd className="whitespace-nowrap text-xl font-bold text-white">
+          <dd className="whitespace-nowrap text-xl font-bold text-slate-900">
             {summary.activeStudents ?? "--"}
-            <span className="ml-1 text-sm font-semibold text-slate-400">
+            <span className="ml-1 text-sm font-semibold text-slate-500">
               / {summary.capacity}
             </span>
           </dd>
         </div>
         <div className="flex items-center justify-between gap-4 py-4">
-          <dt className="flex items-center gap-2 text-sm text-slate-300">
-            <Radio aria-hidden="true" className="text-cyan-200" size={17} />
+          <dt className="flex items-center gap-2 text-sm text-slate-600">
+            <Radio aria-hidden="true" className="text-cyan-700" size={17} />
             Lab status
           </dt>
           <dd
@@ -84,7 +84,7 @@ export function PublicOperationsCard({
         </div>
       </dl>
 
-      <p className="mt-4 text-xs leading-5 text-slate-400">
+      <p className="mt-4 text-xs leading-5 text-slate-500">
         {checkedAt
           ? summary.labStatus === "gray"
             ? `Last monitor report received at ${checkedAt}.`
@@ -102,10 +102,10 @@ export function PublicOperationsCardFallback() {
       aria-label="Loading live lab operations"
       className="card min-h-72 w-full animate-pulse"
     >
-      <div className="h-10 w-44 rounded-md bg-white/10" />
-      <div className="mt-7 h-14 rounded-md bg-white/10" />
-      <div className="mt-px h-14 rounded-md bg-white/10" />
-      <div className="mt-5 h-4 w-48 rounded bg-white/10" />
+      <div className="h-10 w-44 rounded-md bg-slate-200" />
+      <div className="mt-7 h-14 rounded-md bg-slate-100" />
+      <div className="mt-px h-14 rounded-md bg-slate-100" />
+      <div className="mt-5 h-4 w-48 rounded bg-slate-200" />
     </section>
   );
 }

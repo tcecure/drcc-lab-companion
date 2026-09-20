@@ -8,10 +8,10 @@ const statusLabels: Record<ProgressStatus, string> = {
 };
 
 const statusStyles: Record<ProgressStatus, string> = {
-  not_started: "border-slate-300/30 bg-slate-300/10 text-slate-200",
-  in_progress: "border-amber-300/30 bg-amber-300/10 text-amber-100",
-  completed: "border-cyan-300/30 bg-cyan-300/10 text-cyan-100",
-  unavailable: "border-slate-300/30 bg-slate-300/10 text-slate-300",
+  not_started: "border-slate-200 bg-slate-100 text-slate-600",
+  in_progress: "border-amber-200 bg-amber-50 text-amber-700",
+  completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  unavailable: "border-slate-200 bg-slate-100 text-slate-600",
 };
 
 export function ProgressBar({
@@ -25,9 +25,9 @@ export function ProgressBar({
 }) {
   const fill =
     status === "completed"
-      ? "bg-cyan-300"
+      ? "bg-emerald-500"
       : status === "in_progress"
-        ? "bg-amber-300"
+        ? "bg-blue-600"
         : "bg-slate-500";
 
   return (
@@ -36,7 +36,7 @@ export function ProgressBar({
       aria-valuemax={100}
       aria-valuemin={0}
       aria-valuenow={percentage}
-      className="h-2 w-full overflow-hidden rounded-full bg-white/10"
+      className="h-2 w-full overflow-hidden rounded-full bg-slate-200"
       role="progressbar"
     >
       <div className={`h-full ${fill}`} style={{ width: `${percentage}%` }} />
@@ -57,7 +57,7 @@ export function StatusPill({ status }: { status: ProgressStatus }) {
 export function TrainingProgressPanel({ progress }: { progress: PodProgress }) {
   if (progress.status === "unavailable") {
     return (
-      <p className="rounded-lg border border-slate-300/30 bg-slate-300/10 p-4 text-sm leading-6 text-slate-300">
+      <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
         Live progress for {progress.podName} is temporarily unavailable, so no
         percentage is shown. Your completed work is not affected — the tracker
         reports again on its next verification run.
