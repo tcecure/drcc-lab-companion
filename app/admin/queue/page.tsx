@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/card";
 import { SubmitButton } from "@/components/forms";
@@ -34,6 +36,15 @@ export default async function AdminQueuePage({ searchParams }: QueuePageProps) {
   const awaitingNumbers = (assignments ?? []).filter(
     (row) => row.seat_number === null && row.status !== "cancelled",
   ).length;
+  const isArchived = (status: string) =>
+    status === "completed" || status === "cancelled";
+  const scheduled = (assignments ?? []).filter(
+    (row) => !isArchived(row.status),
+  );
+  const archived = (assignments ?? []).filter((row) => isArchived(row.status));
+  const archivedCohorts = [
+    ...new Set(archived.map((row) => row.cohort_number)),
+  ].sort((left, right) => right - left);
 
   return (
     <AppShell roles={roles} title="Student Queue">
@@ -73,7 +84,7 @@ export default async function AdminQueuePage({ searchParams }: QueuePageProps) {
               </tr>
             </thead>
             <tbody>
-              {(assignments ?? []).map((row) => {
+              {scheduled.map((row) => {
                 const profile = profileMap.get(row.user_id);
                 const schedule = getCohortSchedule(row.cohort_number);
 
@@ -113,6 +124,67 @@ export default async function AdminQueuePage({ searchParams }: QueuePageProps) {
           </table>
         </div>
       </Card>
+      {archived.length ? (
+        <Card
+          eyebrow="Finished Cohorts"
+          title={`Archived students (${archived.length})`}
+        >
+          <p className="text-sm leading-6 text-slate-300">
+            These students have finished their lab window. Their completion
+            record is frozen in the cohort snapshot and stays available on
+            Student Progress.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {archivedCohorts.map((cohortNumber) => (
+              <Link
+                className="text-sm font-bold text-cyan-200 hover:text-cyan-100"
+                href={`/admin/progress?cohort=${cohortNumber}`}
+                key={cohortNumber}
+              >
+                Cohort #{cohortNumber} training record
+              </Link>
+            ))}
+          </div>
+          <div className="table-wrap mt-5">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Cohort</th>
+                  <th>Pod</th>
+                  <th>Access Window</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {archived.map((row) => {
+                  const profile = profileMap.get(row.user_id);
+
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <p className="font-bold">
+                          {profile?.full_name ?? "Student"}
+                        </p>
+                        <p className="text-slate-400">{profile?.email}</p>
+                      </td>
+                      <td>#{row.cohort_number}</td>
+                      <td>{row.pod_name ?? "None"}</td>
+                      <td>
+                        {formatDate(row.access_starts_at)} -{" "}
+                        {formatDate(row.access_ends_at)}
+                      </td>
+                      <td>
+                        <span className="status-pill">{row.status}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
     </AppShell>
   );
 }
