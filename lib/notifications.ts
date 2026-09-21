@@ -191,7 +191,7 @@ async function deliverEmailJob(
       if (job.template_name.startsWith("support_")) {
         await sendSupportEmail(env, message);
       } else {
-        await sendSesEmail(env, message);
+        await sendStudentEmail(env, message);
       }
     }
 
@@ -219,6 +219,34 @@ async function sendSupportEmail(
   env: ServerEnv,
   message: { to: string; subject: string; text: string; html: string },
 ) {
+  return sendSmtpEmail(env, message, {
+    name: env.SUPPORT_FROM_NAME,
+    address: env.SUPPORT_EMAIL,
+    replyTo: env.SUPPORT_EMAIL,
+  });
+}
+
+/**
+ * Student-facing mail goes out over the same authenticated Google Workspace
+ * relay as support mail, but from the no-reply identity. SES stays as a
+ * fallback for deployments that configure it instead.
+ */
+async function sendStudentEmail(
+  env: ServerEnv,
+  message: { to: string; subject: string; text: string; html: string },
+) {
+  return sendSmtpEmail(env, message, {
+    name: env.NOTIFICATION_FROM_NAME,
+    address: env.NOTIFICATION_FROM_EMAIL,
+    replyTo: env.NOTIFICATION_REPLY_TO ?? env.SUPPORT_EMAIL,
+  });
+}
+
+async function sendSmtpEmail(
+  env: ServerEnv,
+  message: { to: string; subject: string; text: string; html: string },
+  sender: { name: string; address: string; replyTo: string },
+) {
   if (!env.SUPPORT_SMTP_USER || !env.SUPPORT_SMTP_PASSWORD) {
     return sendSesEmail(env, message);
   }
@@ -235,10 +263,10 @@ async function sendSupportEmail(
 
   await transport.sendMail({
     from: {
-      name: env.SUPPORT_FROM_NAME,
-      address: env.SUPPORT_EMAIL,
+      name: sender.name,
+      address: sender.address,
     },
-    replyTo: env.SUPPORT_EMAIL,
+    replyTo: sender.replyTo,
     to: message.to,
     subject: message.subject,
     text: message.text,

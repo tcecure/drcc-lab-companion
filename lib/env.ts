@@ -17,6 +17,9 @@ const envSchema = z.object({
   SUPPORT_SMTP_PORT: z.coerce.number().int().positive().default(465),
   SUPPORT_SMTP_USER: z.string().email().optional(),
   SUPPORT_SMTP_PASSWORD: z.string().optional(),
+  NOTIFICATION_FROM_EMAIL: z.string().email().default("no-reply@digitalrcc.com"),
+  NOTIFICATION_FROM_NAME: z.string().default("DigitalRCC"),
+  NOTIFICATION_REPLY_TO: z.string().email().optional(),
   SES_FROM_ADDRESS: z.string().email().optional(),
   SES_REPLY_TO_ADDRESS: z.string().email().optional(),
   AWS_REGION: z.string().optional(),
@@ -92,6 +95,11 @@ export function readServerEnv() {
     SUPPORT_SMTP_PASSWORD:
       value(process.env.SUPPORT_SMTP_PASSWORD) ??
       value(process.env.GOOGLE_SMTP_APP_PASSWORD),
+    NOTIFICATION_FROM_EMAIL: value(process.env.NOTIFICATION_FROM_EMAIL),
+    NOTIFICATION_FROM_NAME: value(process.env.NOTIFICATION_FROM_NAME),
+    NOTIFICATION_REPLY_TO:
+      value(process.env.NOTIFICATION_REPLY_TO) ??
+      value(process.env.SUPPORT_EMAIL),
     SES_FROM_ADDRESS: value(process.env.SES_FROM_ADDRESS),
     SES_REPLY_TO_ADDRESS: value(process.env.SES_REPLY_TO_ADDRESS),
     AWS_REGION: value(process.env.AWS_REGION),

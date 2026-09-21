@@ -56,16 +56,18 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
           <SubmitButton>Add active students</SubmitButton>
         </form>
       </Card>
-      <Card eyebrow="Future Cohorts" title="Queue first, numbers later">
+      <Card eyebrow="Cohort Queue" title="Queue first, numbers later">
         <p className="text-sm leading-6 text-slate-300">
-          Imported students are added to the lab queue and emailed a
-          confirmation naming the session start date. Student numbers, pods, and
-          lab usernames are assigned automatically at 1:00 AM Eastern on the
-          cohort start date, then a second email delivers portal access.
+          Imported students are invited to the portal, added to the lab queue
+          and emailed a confirmation naming the session start date. Student
+          numbers, pods, and lab usernames are assigned automatically at 1:00 AM
+          Eastern on the cohort start date, then a second email delivers portal
+          access. Importing into a cohort that has already started assigns those
+          identities immediately.
         </p>
       </Card>
       <section className="grid gap-4 xl:grid-cols-2">
-        <Card eyebrow="Future Queue CSV" title="Upload participant export">
+        <Card eyebrow="Queue CSV" title="Upload participant export">
           <form action={importCsvAction} className="grid gap-4">
             <input
               accept=".csv,text/csv"
@@ -83,7 +85,7 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
             <SubmitButton>Upload CSV</SubmitButton>
           </form>
         </Card>
-        <Card eyebrow="Future Queue Manual" title="Add up to 10 students">
+        <Card eyebrow="Queue Manual" title="Add up to 10 students">
           <form action={importManualAction} className="grid gap-3">
             {Array.from({ length: 10 }).map((_, index) => (
               <div className="grid gap-3 sm:grid-cols-2" key={index}>
@@ -112,7 +114,7 @@ export default async function ImportPage({ searchParams }: ImportPageProps) {
 function CohortSelect({
   cohorts,
 }: {
-  cohorts: { cohortNumber: number; startDate: string }[];
+  cohorts: { cohortNumber: number; startDate: string; inProgress: boolean }[];
 }) {
   return (
     <label className="grid gap-2 text-sm text-slate-300">
@@ -123,7 +125,8 @@ function CohortSelect({
         </option>
         {cohorts.map((cohort) => (
           <option key={cohort.cohortNumber} value={cohort.cohortNumber}>
-            Cohort {cohort.cohortNumber} — starts{" "}
+            Cohort {cohort.cohortNumber} —{" "}
+            {cohort.inProgress ? "in progress since" : "starts"}{" "}
             {formatCohortStartDate(cohort.startDate)}
           </option>
         ))}
