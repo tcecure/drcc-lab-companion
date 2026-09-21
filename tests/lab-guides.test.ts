@@ -26,14 +26,20 @@ describe("lab guides", () => {
     }
   });
 
-  it("publishes AC as the first versioned digital guide", () => {
-    expect(getDigitalGuide("AC")).toEqual({
-      path: "/guides/ac",
-      version: "2026.08.1",
-    });
-    expect(getDigitalGuide("IA")).toBeNull();
-    expect(
-      existsSync(join(process.cwd(), "content/guides/ac/2026.08.1/guide.mdx")),
-    ).toBe(true);
+  it("publishes every family as a versioned digital guide", () => {
+    for (const guide of labGuides) {
+      expect(getDigitalGuide(guide.code)).toEqual({
+        path: `/guides/${guide.code.toLowerCase()}`,
+        version: "2026.08.1",
+      });
+      expect(
+        existsSync(
+          join(
+            process.cwd(),
+            `content/guides/${guide.code.toLowerCase()}/2026.08.1/guide.mdx`,
+          ),
+        ),
+      ).toBe(true);
+    }
   });
 });

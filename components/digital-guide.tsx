@@ -128,12 +128,21 @@ function GuideCodeBlock({
   );
 }
 
-function GuideLink(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
-  const external = props.href?.startsWith("http");
+function GuideLink({
+  identity,
+  ...props
+}: AnchorHTMLAttributes<HTMLAnchorElement> & {
+  identity: StudentLabIdentity | null;
+}) {
+  const href = props.href
+    ? replaceGuideTokens(props.href, identity)
+    : undefined;
+  const external = href?.startsWith("http");
 
   return (
     <a
       {...props}
+      href={href}
       rel={external ? "noreferrer" : props.rel}
       target={external ? "_blank" : props.target}
     />
@@ -149,8 +158,13 @@ export function getDigitalGuideComponents(
       <GuideField {...props} identity={identity} />
     ),
     GuideLab,
+    GuideLink: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => (
+      <GuideLink {...props} identity={identity} />
+    ),
     GuideSection,
-    a: GuideLink,
+    a: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => (
+      <GuideLink {...props} identity={identity} />
+    ),
     code: (props: HTMLAttributes<HTMLElement>) => (
       <code {...props}>
         {replaceGuideTokens(getTextContent(props.children), identity)}

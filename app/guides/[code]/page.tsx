@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   BookOpenCheck,
@@ -8,38 +9,61 @@ import {
 } from "lucide-react";
 
 import AcGuide from "@/content/guides/ac/2026.08.1/guide.mdx";
+import IaGuide from "@/content/guides/ia/2026.08.1/guide.mdx";
+import MpGuide from "@/content/guides/mp/2026.08.1/guide.mdx";
+import PeGuide from "@/content/guides/pe/2026.08.1/guide.mdx";
+import ScGuide from "@/content/guides/sc/2026.08.1/guide.mdx";
+import SiGuide from "@/content/guides/si/2026.08.1/guide.mdx";
 import { AppShell } from "@/components/app-shell";
 import {
   getDigitalGuideComponents,
   GuidePendingNotice,
 } from "@/components/digital-guide";
 import { getUserRoles, requireUser } from "@/lib/auth";
-import { acGuideRelease, getAcGuideContext } from "@/lib/digital-guides";
+import {
+  digitalGuideReleases,
+  getDigitalGuideContext,
+  type DigitalGuideCode,
+} from "@/lib/digital-guides";
 import { canManage } from "@/lib/roles";
 import {
   getStudentCohortAssignment,
   getStudentLabIdentity,
 } from "@/lib/student-lab";
 
-const guideSections = [
-  { href: "#before-you-begin", label: "Before you begin" },
-  { href: "#connect", label: "Connect" },
-  { href: "#workspace", label: "Directory workspace" },
-  { href: "#module-1", label: "M1 Account management" },
-  { href: "#module-2", label: "M2 User lifecycle" },
-  { href: "#module-3", label: "M3 Least privilege" },
-  { href: "#module-4", label: "M4 Audit and evidence" },
-  { href: "#quick-reference", label: "Quick reference" },
-  { href: "#completion-checklist", label: "Completion checklist" },
-] as const;
+const guideContent = {
+  AC: AcGuide,
+  IA: IaGuide,
+  MP: MpGuide,
+  PE: PeGuide,
+  SC: ScGuide,
+  SI: SiGuide,
+} as const;
 
-export default async function AccessControlGuidePage() {
+function isDigitalGuideCode(code: string): code is DigitalGuideCode {
+  return code in digitalGuideReleases;
+}
+
+export default async function DigitalLabGuidePage({
+  params,
+}: {
+  params: Promise<{ code: string }>;
+}) {
+  const { code: routeCode } = await params;
+  const code = routeCode.toUpperCase();
+
+  if (!isDigitalGuideCode(code)) {
+    notFound();
+  }
+
+  const release = digitalGuideReleases[code];
+  const Guide = guideContent[code];
   const user = await requireUser();
   const roles = await getUserRoles(user.id);
   const manager = canManage(roles);
   const assignment = manager ? null : await getStudentCohortAssignment(user.id);
   const studentIdentity = getStudentLabIdentity(assignment);
-  const guideContext = getAcGuideContext({
+  const guideContext = getDigitalGuideContext({
     identity: studentIdentity,
     manager,
   });
@@ -55,26 +79,25 @@ export default async function AccessControlGuidePage() {
         : "Pod assignment pending";
 
   return (
-    <AppShell roles={roles} title="Access Control Guide">
+    <AppShell roles={roles} title={`${release.family} Guide`}>
       <section className="guide-hero">
         <div>
           <Link className="guide-back-link" href={backPath}>
             <ArrowLeft aria-hidden="true" size={16} />
             Lab guide library
           </Link>
-          <p className="eyebrow mt-6">AC Lab Family · Digital Edition</p>
-          <h2>Access Control</h2>
-          <p className="guide-hero-summary">
-            A personalized field guide for account management, user lifecycle,
-            least privilege, and access review evidence.
+          <p className="eyebrow mt-6">
+            {release.code} Lab Family · Digital Edition
           </p>
+          <h2>{release.family}</h2>
+          <p className="guide-hero-summary">{release.summary}</p>
         </div>
         <div className="guide-release-panel">
           <BookOpenCheck aria-hidden="true" size={22} />
           <div>
             <span>Current release</span>
-            <strong>Version {acGuideRelease.version}</strong>
-            <small>{acGuideRelease.effectiveDate}</small>
+            <strong>Version {release.version}</strong>
+            <small>{release.effectiveDate}</small>
           </div>
         </div>
       </section>
@@ -95,7 +118,7 @@ export default async function AccessControlGuidePage() {
           </div>
           <div>
             <dt>Labs</dt>
-            <dd>{acGuideRelease.labCount}</dd>
+            <dd>{release.labCount}</dd>
           </div>
         </dl>
         <div className="guide-header-actions">
@@ -105,7 +128,7 @@ export default async function AccessControlGuidePage() {
           </Link>
           <a
             className="button secondary"
-            href={acGuideRelease.pdfPath}
+            href={release.pdfPath}
             rel="noreferrer"
             target="_blank"
           >
@@ -122,7 +145,7 @@ export default async function AccessControlGuidePage() {
         <aside className="guide-toc" aria-label="Guide sections">
           <p>On this page</p>
           <nav>
-            {guideSections.map((section) => (
+            {release.sections.map((section) => (
               <a href={section.href} key={section.href}>
                 {section.label}
               </a>
@@ -130,7 +153,7 @@ export default async function AccessControlGuidePage() {
           </nav>
           <a
             className="guide-pdf-link"
-            href={acGuideRelease.pdfPath}
+            href={release.pdfPath}
             rel="noreferrer"
             target="_blank"
           >
@@ -140,7 +163,7 @@ export default async function AccessControlGuidePage() {
         </aside>
 
         <article className="digital-guide-article">
-          <AcGuide components={guideComponents} />
+          <Guide components={guideComponents} />
         </article>
       </div>
     </AppShell>

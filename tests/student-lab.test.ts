@@ -33,6 +33,18 @@ describe("buildStudentLabIdentity", () => {
     );
   });
 
+  it("resolves family artifact paths and unpadded network octets", () => {
+    const identity = buildStudentLabIdentity(7);
+    const rendered = replaceGuideTokens(
+      "{{iaArtifactsPath}}|{{siArtifactsPath}}|10.52.{{podOctet}}.1",
+      identity,
+    );
+
+    expect(rendered).toBe(
+      "C:\\CyberLab\\Pod07\\IA-Artifacts\\|C:\\CyberLab\\Pod07\\SI-Artifacts\\|10.52.7.1",
+    );
+  });
+
   it("falls back to placeholders without an identity", () => {
     expect(replaceGuideTokens("{{sessionHost}}", null)).toBe("PODXX-SRV");
   });

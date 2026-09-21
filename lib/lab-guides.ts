@@ -18,9 +18,11 @@ export const labGuides = [
     title: "Identification & Authentication",
     description:
       "Passwords, authentication controls, identity management, and account policies.",
+    digitalGuidePath: "/guides/ia",
+    digitalGuideVersion: "2026.08.1",
     guidePath: "/guides/ia-lab-completion-guide.pdf",
     labCount: 12,
-    pageCount: 22,
+    pageCount: 26,
     workspace: "server",
   },
   {
@@ -28,9 +30,11 @@ export const labGuides = [
     title: "System & Information Integrity",
     description:
       "Vulnerability management, patching, malware protection, and incident evidence.",
+    digitalGuidePath: "/guides/si",
+    digitalGuideVersion: "2026.08.1",
     guidePath: "/guides/si-lab-completion-guide.pdf",
     labCount: 12,
-    pageCount: 27,
+    pageCount: 28,
     workspace: "server",
   },
   {
@@ -38,9 +42,11 @@ export const labGuides = [
     title: "System & Communications Protection",
     description:
       "pfSense firewall rules, segmentation, logging, and network protection.",
+    digitalGuidePath: "/guides/sc",
+    digitalGuideVersion: "2026.08.1",
     guidePath: "/guides/sc-lab-completion-guide.pdf",
     labCount: 12,
-    pageCount: 25,
+    pageCount: 26,
     workspace: "firewall",
   },
   {
@@ -48,9 +54,11 @@ export const labGuides = [
     title: "Media Protection",
     description:
       "Media classification, sanitization, reuse, and disposal documentation.",
+    digitalGuidePath: "/guides/mp",
+    digitalGuideVersion: "2026.08.1",
     guidePath: "/guides/mp-lab-completion-guide.pdf",
     labCount: 3,
-    pageCount: 12,
+    pageCount: 13,
     workspace: "pod",
   },
   {
@@ -58,9 +66,11 @@ export const labGuides = [
     title: "Physical Protection",
     description:
       "Physical access, visitor activity, audit logs, and incident response.",
+    digitalGuidePath: "/guides/pe",
+    digitalGuideVersion: "2026.08.1",
     guidePath: "/guides/pe-lab-completion-guide.pdf",
     labCount: 6,
-    pageCount: 14,
+    pageCount: 17,
     workspace: "pod",
   },
 ] as const;

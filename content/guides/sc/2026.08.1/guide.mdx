@@ -1,0 +1,301 @@
+<GuideSection id="before-you-begin" index="00" title="Before you begin">
+
+This guide covers all 12 System & Communications Protection labs. You will use your isolated pfSense gateway to define trust boundaries, remove permissive rules, segment networks, and validate monitoring.
+
+### CMMC Level 1 alignment
+
+| Practice     | What you practice                                                                       |
+| ------------ | --------------------------------------------------------------------------------------- |
+| SC.L1-3.13.1 | Monitor, control, and protect communications at external and internal system boundaries |
+
+<GuideCallout title="Your firewall is isolated" tone="info">
+
+Changes to `{{podName}}-GW` affect only your assigned pod. Capture evidence before and after each major change and always select **Apply Changes** in pfSense.
+
+</GuideCallout>
+
+</GuideSection>
+
+<GuideSection id="connect" index="01" title="Connect to your lab">
+
+Open [Guacamole](https://guac.01.digitalrcc.com/#/), sign in, and open `{{sessionHost}}`. The gateway is not a separate Guacamole connection.
+
+<dl className="guide-fields">
+  <GuideField label="Student" value="Student {{studentNumber}}" />
+  <GuideField label="Connection" value="{{sessionHost}}" />
+  <GuideField label="Gateway" value="{{gatewayAddress}}" />
+  <GuideField label="Artifacts" value="{{scArtifactsPath}}" />
+</dl>
+
+1. On the pod desktop, open Edge or Firefox.
+2. Browse to `http://{{gatewayAddress}}`.
+3. Sign in to pfSense with username `admin` and the lab password `pfsense`.
+4. Use **Ctrl + Alt + Shift** to open the Guacamole side panel when needed.
+
+</GuideSection>
+
+<GuideSection id="workspace" index="02" title="Open the firewall workspace">
+
+Open `{{scArtifactsPath}}` in File Explorer for worksheets and evidence templates.
+
+```powershell
+explorer "{{scArtifactsPath}}"
+```
+
+| Component    | Your value                  |
+| ------------ | --------------------------- |
+| Session host | `{{sessionHost}}`           |
+| Gateway      | `{{podName}}-GW`            |
+| LAN          | `{{podNetwork}}`            |
+| pfSense UI   | `http://{{gatewayAddress}}` |
+
+Screenshots and completed worksheets must use the exact filenames shown. Do not delete the webConfigurator anti-lockout rule or enable **Disable webConfigurator anti-lockout rule**.
+
+</GuideSection>
+
+<GuideSection id="module-1" index="M1" title="Foundations of the digital perimeter">
+
+Identify the boundary, enforce deny by default, and distinguish monitoring, control, and protection.
+
+<GuideLab id="M1-L1" title="Understanding trust boundaries" objective="Map the external boundary, internal zones, and protected FCI location.">
+
+1. Read `SC-M1-L1_Network_Topology.txt` and open **Status > Dashboard** and **Status > Interfaces** in pfSense.
+2. Complete `SC-M1-L1_Boundary_Worksheet.txt`:
+   - WAN/firewall edge is the external boundary.
+   - Internet and ISP equipment are untrusted.
+   - The firewall controls trust.
+   - Internal systems are trusted only inside the protected boundary.
+   - FCI belongs behind the firewall on protected systems.
+3. Identify any internal zones or DMZ currently configured.
+4. Save at least 50 characters as `{{scArtifactsPath}}SC-M1-L1_Completed.txt`.
+
+</GuideLab>
+
+<GuideLab id="M1-L2" title="Deny by default" objective="Replace unrestricted traffic with narrow, justified allow rules.">
+
+1. Open **Firewall > Rules > LAN** and remove `INSECURE: Allow all traffic`.
+2. Remove `INSECURE: Allow all WAN traffic` and apply the change.
+3. Add these LAN rules above the default deny:
+
+| Purpose         | Protocol | Source  | Destination  | Port       |
+| --------------- | -------- | ------- | ------------ | ---------- |
+| DNS to DC01     | TCP/UDP  | LAN net | `10.50.1.10` | 53         |
+| Web browsing    | TCP      | LAN net | Any          | 80 and 443 |
+| Troubleshooting | ICMP     | LAN net | Any          | ICMP       |
+
+4. Keep the anti-lockout rule first; everything not explicitly allowed is denied.
+5. Test `10.50.1.10` under **Diagnostics > Ping** and inspect blocked traffic under **Status > System Logs > Firewall**.
+6. Save a screenshot as `{{scArtifactsPath}}M1-L2_FinalRules.png`.
+
+</GuideLab>
+
+<GuideLab id="M1-L3" title="Monitor, control, protect" objective="Explain how specific rules perform each firewall responsibility.">
+
+1. Review the LAN rules and firewall logs.
+2. Map the controls:
+
+| Responsibility | Example                                    |
+| -------------- | ------------------------------------------ |
+| Monitor        | Logged web traffic or firewall log entries |
+| Control        | DNS limited to DC01                        |
+| Protect        | Management-network block and default deny  |
+
+3. Complete the analysis questions in `SC-M1-L3_Worksheet.txt`.
+4. Save the completed worksheet as `{{scArtifactsPath}}M1-L3_Worksheet_Complete.txt` and capture representative logs.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-2" index="M2" title="External and internal boundaries">
+
+Document the organizational boundary, build a DMZ, and segment departments with VLANs.
+
+<GuideLab id="M2-L1" title="Draw the organizational boundary" objective="Create a current network diagram from the live firewall configuration.">
+
+1. Gather interface, rule, and dashboard information from pfSense.
+2. Open `SC-M2-L1_Boundary_Worksheet.txt`.
+3. Draw the external Internet/ISP, firewall boundary device, internal LAN, each server/workstation, direction of connections, and trust boundaries.
+4. Save at least 50 characters as `{{scArtifactsPath}}SC-M2-L1_Completed.txt`; `.txt`, `.csv`, or `.png` is accepted.
+
+</GuideLab>
+
+<GuideLab id="M2-L2" title="Secure the DMZ" objective="Move the public web tier onto an isolated DMZ interface.">
+
+1. Review the WAN rule and NAT entry that currently send public HTTP traffic to LAN host `10.51.{{podOctet}}.50`.
+2. Under **Interfaces > VLANs**, create VLAN tag `50` on parent `vtnet1` with description `DMZ`.
+3. Assign it under **Interfaces > Assignments**, enable it as `DMZ`, and set static IPv4 `10.52.{{podOctet}}.1/24`.
+4. Add DMZ rules that allow HTTP/HTTPS to `10.52.{{podOctet}}.50`, block DMZ-to-LAN traffic, and permit responses to established connections.
+5. Permit LAN administration of the DMZ.
+6. Update the HTTP port forward to target `10.52.{{podOctet}}.50` on port 80.
+7. Verify the web service is reachable through the DMZ, the DMZ cannot reach LAN or DC01, and LAN administration still works.
+8. Save `M2-L2_DMZ_Rules.png` and `M2-L2_DMZ_Verification.txt` under `{{scArtifactsPath}}`.
+
+<GuideCallout title="No overlapping networks" tone="warning">
+
+The DMZ must use `10.52.{{podOctet}}.0/24`; pfSense rejects an interface address inside the existing LAN subnet.
+
+</GuideCallout>
+
+</GuideLab>
+
+<GuideLab id="M2-L3" title="Internal segmentation" objective="Create department VLANs and isolate sensitive resources from guest traffic.">
+
+1. Read `SC-M2-L3_Segmentation_Plan.txt`.
+2. Create these VLANs on `vtnet1` and assign each one:
+
+| Interface   | Tag | Address                   |
+| ----------- | --- | ------------------------- |
+| HR          | 10  | `10.61.{{podOctet}}.1/24` |
+| FINANCE     | 20  | `10.62.{{podOctet}}.1/24` |
+| ENGINEERING | 30  | `10.63.{{podOctet}}.1/24` |
+| GUEST       | 40  | `10.64.{{podOctet}}.1/24` |
+
+3. Allow department DNS/AD traffic that is required, then block lateral access to unrelated departments.
+4. On GUEST, allow DNS and web access to the Internet but block all internal networks.
+5. Test that Guest cannot reach HR or Finance, Engineering cannot reach Finance, departments can use required DNS, and Guest can browse externally.
+6. Save `M2-L3_VLAN_Config.png` and `M2-L3_Isolation_Test.txt` under `{{scArtifactsPath}}`.
+
+**Tracker check:** at least two VLANs must exist; the instructor reviews the isolation rules and evidence.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-3" index="M3" title="Firewall rules">
+
+Audit the rule base, correct ordering, and reduce an application's exposed ports to the minimum necessary.
+
+<GuideLab id="M3-L1" title="Firewall rule audit" objective="Remove overly permissive, duplicate, unused, and shadowed rules.">
+
+1. Open **Firewall > Rules > LAN** and `SC-M3-L1_Audit_Worksheet.txt`.
+2. Classify every rule as Allow Any, Shadowed, Duplicate, Unused, or OK.
+3. Delete unrestricted allows, duplicates, and unused rules; move or remove shadowed entries.
+4. Preserve required DNS, web, management, and default-deny behavior.
+5. Verify expected traffic still works and unauthorized traffic is blocked.
+6. Save `M3-L1_Audit_Complete.txt` and `M3-L1_CleanRules.png` under `{{scArtifactsPath}}`.
+
+<GuideCallout title="How the tracker evaluates duplicates" tone="info">
+
+The checker evaluates duplicate action/protocol/source/destination combinations per interface. A separate default deny on each interface is valid.
+
+</GuideCallout>
+
+</GuideLab>
+
+<GuideLab id="M3-L2" title="Rule ordering challenge" objective="Place specific allows before the final default-deny rule.">
+
+Arrange the LAN rules in this order:
+
+1. Anti-lockout rule
+2. Allow DNS to DC01
+3. Allow web traffic
+4. Allow RDP to DC01
+5. Allow ICMP
+6. Default Deny, last
+
+Apply changes, ping `10.50.1.10`, inspect traffic logs, and save `{{scArtifactsPath}}M3-L2_Reordered_Rules.png`.
+
+**Tracker check:** LAN must contain at least one allow rule and end with a block rule to any destination.
+
+</GuideLab>
+
+<GuideLab id="M3-L3" title="Least privilege access" objective="Expose only HTTPS to the accounting application.">
+
+1. Find all rules targeting `10.51.{{podOctet}}.100`.
+2. Delete ports 21, 22, 23, 80, 3306, and 8080.
+3. Keep exactly one TCP 443 HTTPS pass rule to that host.
+4. Apply changes and confirm HTTPS works while other ports are blocked.
+5. Save `{{scArtifactsPath}}M3-L3_LeastPrivilege_Rules.png`.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-4" index="M4" title="Monitoring and validation">
+
+Investigate firewall evidence, perform a compliance walkthrough, and complete the final capstone.
+
+<GuideLab id="M4-L1" title="Firewall log investigation" objective="Find port scans, malware indicators, denied legitimate traffic, and suspicious sources.">
+
+1. Open **Status > System Logs > Firewall** and use the advanced filter.
+2. Search destination ports 22, 23, 3389, and 445 for scan patterns.
+3. Search outbound IRC ports 6660-6669 for possible command-and-control traffic.
+4. Record source/destination IPs, ports, timestamps, action, affected application, and recommendation.
+5. Complete `SC-M4-L1_Investigation_Worksheet.txt` and save at least 50 characters as `{{scArtifactsPath}}SC-M4-L1_Completed.txt`.
+
+</GuideLab>
+
+<GuideLab id="M4-L2" title="Verify SC compliance" objective="Walk through the pod as a CMMC assessor and preserve supporting evidence.">
+
+1. Open `SC-M4-L2_Compliance_Checklist.txt`.
+2. Verify dashboard health, configured rules, current logs, and the last default-deny rule.
+3. Confirm there is no Allow Any rule and justify every required allow.
+4. Verify logging on key rules and capture log evidence.
+5. Review VLAN segmentation and document any gap.
+6. Identify where FCI resides and the rules protecting it.
+7. Save the checklist as `{{scArtifactsPath}}SC-M4-L2_Completed.txt` with at least 50 characters and supporting screenshots under `M4-L2_Compliance_Evidence\`.
+
+</GuideLab>
+
+<GuideLab id="M4-L3" title="Final capstone" objective="Repair the full boundary configuration and produce assessment evidence.">
+
+Complete these six tasks:
+
+1. Remove every LAN/WAN Allow Any rule and preserve default deny.
+2. Remove inbound Telnet on port 23 and allow only required WAN services.
+3. Create at least two VLANs with effective isolation rules.
+4. Enable **Log packets that are handled by this rule** on every block rule, including OPT/VLAN tabs, and on critical allow rules.
+5. Verify DNS, web access, internal services, and blocked external attacks.
+6. Save firewall-rule, VLAN, and log screenshots, a completed checklist, and a boundary diagram under `{{scArtifactsPath}}M4-L3_Capstone\`.
+
+**Tracker checks:** deny by default, WAN secured, no Telnet, logging on every block rule, and at least two VLANs.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="quick-reference" index="QR" title="Quick reference">
+
+| Task            | pfSense location                |
+| --------------- | ------------------------------- |
+| Rules           | Firewall > Rules                |
+| Logs            | Status > System Logs > Firewall |
+| Interfaces      | Status > Interfaces             |
+| VLANs           | Interfaces > VLANs              |
+| Assignments     | Interfaces > Assignments        |
+| Port forwarding | Firewall > NAT > Port Forward   |
+| Ping            | Diagnostics > Ping              |
+| DHCP            | Services > DHCP Server          |
+| Backup          | Diagnostics > Backup & Restore  |
+
+- Rules are evaluated top to bottom; first match wins.
+- Keep narrow allow rules above the final default deny.
+- Apply every saved change before testing.
+- LAN rules govern traffic entering from LAN; WAN rules govern traffic entering from outside.
+- Capture evidence before moving to the next lab.
+
+</GuideSection>
+
+<GuideSection id="completion-checklist" index="OK" title="Completion checklist">
+
+- [ ] M1-L1 Trust boundaries documented
+- [ ] M1-L2 Deny by default implemented
+- [ ] M1-L3 Monitor/control/protect identified
+- [ ] M2-L1 Boundary diagram completed
+- [ ] M2-L2 DMZ secured
+- [ ] M2-L3 VLAN segmentation configured
+- [ ] M3-L1 Rule audit completed
+- [ ] M3-L2 Rule order corrected
+- [ ] M3-L3 Accounting access limited to HTTPS
+- [ ] M4-L1 Firewall logs investigated
+- [ ] M4-L2 Compliance walkthrough completed
+- [ ] M4-L3 Capstone checks passed
+
+<GuideCallout title="You are ready to continue" tone="check">
+
+Confirm all 12 SC labs in the tracker and keep screenshots with the matching worksheets in `{{scArtifactsPath}}`.
+
+</GuideCallout>
+
+</GuideSection>

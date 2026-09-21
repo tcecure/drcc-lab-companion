@@ -1,0 +1,194 @@
+<GuideSection id="before-you-begin" index="00" title="Before you begin">
+
+This guide covers all six Physical Protection labs. You will correlate employment, badge, visitor, camera, alarm, and incident records, then enter precise findings in the seeded response CSVs.
+
+### CMMC Level 1 alignment
+
+| Practice     | What you practice                               |
+| ------------ | ----------------------------------------------- |
+| PE.L1-3.10.1 | Limit physical access to authorized individuals |
+| PE.L1-3.10.3 | Escort visitors and monitor their activity      |
+| PE.L1-3.10.4 | Maintain and review physical-access audit logs  |
+| PE.L1-3.10.5 | Control physical-access devices                 |
+
+<GuideCallout title="CSV rules" tone="warning">
+
+Edit the existing row, keep one record per line, preserve all headers and seeded IDs, and wrap values containing commas in double quotes.
+
+</GuideCallout>
+
+</GuideSection>
+
+<GuideSection id="connect" index="01" title="Connect to your lab">
+
+Open [Guacamole](https://guac.01.digitalrcc.com/#/), sign in, and open `{{sessionHost}}`.
+
+<dl className="guide-fields">
+  <GuideField label="Student" value="Student {{studentNumber}}" />
+  <GuideField label="Connection" value="{{sessionHost}}" />
+  <GuideField label="Badge prefix" value="{{podPrefix}}" />
+  <GuideField label="Artifacts" value="{{peArtifactsPath}}" />
+</dl>
+
+The exercises are record-analysis labs. You do not need to configure a firewall or edit Active Directory.
+
+</GuideSection>
+
+<GuideSection id="workspace" index="02" title="Open the physical security workspace">
+
+Open `{{peArtifactsPath}}` in File Explorer.
+
+```powershell
+explorer "{{peArtifactsPath}}"
+```
+
+| Lab   | Answer file                                                     |
+| ----- | --------------------------------------------------------------- |
+| M1-L1 | `PE-M1-L1_AccessReview.csv`                                     |
+| M1-L2 | `PE-M1-L2_AccessDecision.csv`                                   |
+| M2-L1 | `PE-M2-L1_EscortReview.csv`                                     |
+| M2-L2 | `PE-M2-L2_VisitorLog.csv`                                       |
+| M3-L1 | `PE-M3-L1_DiscrepancyReview.csv`                                |
+| M3-L2 | `PE-M3-L2_BadgeInventory.csv` and `PE-M3-L2_IncidentReport.csv` |
+
+Badge IDs use your pod prefix, such as `B-{{podPrefix}}-104` and `TEMP-{{podPrefix}}-014`. Employee, event, and visitor IDs are shared scenario identifiers and must not be changed.
+
+</GuideSection>
+
+<GuideSection id="module-1" index="M1" title="Physical access authorization">
+
+<GuideLab id="M1-L1" title="Physical access review" objective="Find a terminated employee and unapproved contractor with unauthorized access.">
+
+1. Compare `PE-M1-L1_EmployeeRoster.csv`, `PE-M1-L1_BadgeRoster.csv`, and `PE-M1-L1_ServerRoomAccessList.csv`.
+2. In `PE-M1-L1_AccessReview.csv`, complete the two seeded rows:
+
+| Subject               | Finding                                                                              | Required action                                                         |
+| --------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| EMP-104, Taylor Reed  | Unauthorized; terminated 2026-05-28 while badge `B-{{podPrefix}}-104` remains active | Disable the badge and remove server-room access                         |
+| CTR-209, Morgan Blake | Unauthorized; unescorted access has no approval                                      | Remove/revoke unescorted access or require escort until approval exists |
+
+**Success check:** both findings say unauthorized and each required action is explicit.
+
+</GuideLab>
+
+<GuideLab id="M1-L2" title="Server room access decisions" objective="Correlate four badge events with employment, approval, purpose, and escort records.">
+
+1. Review `PE-M1-L2_BadgeLog.csv`, `PE-M1-L2_ServerRoomLog.csv`, the employee roster, and server-room access list.
+2. Complete every row in `PE-M1-L2_AccessDecision.csv`:
+
+| Event                | Decision | Reason                                                                    |
+| -------------------- | -------- | ------------------------------------------------------------------------- |
+| E-1001, Alex Chen    | Yes      | Active IT employee with approved unescorted access and legitimate purpose |
+| E-1002, Taylor Reed  | No       | Entry occurred after termination                                          |
+| E-1003, Jordan Lee   | Yes      | Active Facilities employee approved for unescorted access                 |
+| E-1004, Morgan Blake | No       | Contractor lacks approval and no escort was recorded                      |
+
+Every row needs a specific, nonempty reason.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-2" index="M2" title="Visitor escort and temporary badges">
+
+<GuideLab id="M2-L1" title="Unescorted visitor investigation" objective="Use visitor, ticket, camera, and policy evidence to document a restricted-area violation.">
+
+1. Read `PE-M2-L1_EscortPolicy.txt` and repair ticket `FAC-{{podPrefix}}-4421`.
+2. Review `PE-M2-L1_VisitorLog.csv`: V-3002 Kevin Ross has badge `TEMP-{{podPrefix}}-012` and no EscortId.
+3. Corroborate with `PE-M2-L1_CameraObservation.txt`: that badge appears alone in the server-room corridor at 11:18 and 11:44.
+4. In the V-3002 row of `PE-M2-L1_EscortReview.csv`, state that the visitor entered unescorted, cite both records, and require incident reporting and escorted future access.
+
+</GuideLab>
+
+<GuideLab id="M2-L2" title="Temporary badge lifecycle" objective="Issue, escort, return, and reconcile a visitor badge.">
+
+1. Review `PE-M2-L2_TemporaryBadgeInventory.csv`.
+2. In `PE-M2-L2_VisitorLog.csv`, complete the Casey Morgan row:
+
+| Field            | Required value           |
+| ---------------- | ------------------------ |
+| TemporaryBadgeId | `TEMP-{{podPrefix}}-014` |
+| EscortId         | `EMP-102`                |
+| SignIn           | Valid date/time          |
+| SignOut          | Valid later date/time    |
+| BadgeReturned    | `Yes`                    |
+
+3. Keep the inventory consistent by recording issuance and return for the same badge and times.
+
+**Success check:** sign-out follows sign-in, the badge is returned, and the inventory remains present.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-3" index="M3" title="Audit logs and incident response">
+
+<GuideLab id="M3-L1" title="Reconcile physical access logs" objective="Find two discrepancies across badge, visitor, and alarm records.">
+
+1. Compare `PE-M3-L1_BadgeControllerExport.csv`, `PE-M3-L1_VisitorSignInSheet.csv`, and `PE-M3-L1_AlarmLog.csv`.
+2. Preserve the seeded SourceEvent values and complete both rows in `PE-M3-L1_DiscrepancyReview.csv`:
+
+| Discrepancy     | Finding                                                               | Required action                                                 |
+| --------------- | --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| D-01 / BC-5003  | `TEMP-{{podPrefix}}-014` used at 18:42 after it was returned at 16:10 | Disable/revoke the badge and investigate misuse                 |
+| D-02 / ALM-9007 | Forced server-room door with no matching badge event                  | Investigate as a physical security incident and review evidence |
+
+Do not substitute BC-5002 or ALM-9006; those records are context, not the two graded discrepancies.
+
+</GuideLab>
+
+<GuideLab id="M3-L2" title="Lost badge incident response" objective="Contain a live lost credential, issue a replacement, and document post-loss access.">
+
+1. Read `PE-M3-L2_LostBadgeReport.txt`: Dana Brooks reported `B-{{podPrefix}}-115` lost at 10:00 on 2026-06-07.
+2. Review `PE-M3-L2_AccessEventsAfterLoss.csv`: EVT-6112 is server-room use at 11:12, after the report.
+3. In `PE-M3-L2_BadgeInventory.csv`, edit the existing rows:
+   - Set `B-{{podPrefix}}-115` to Disabled or Revoked.
+   - Set replacement `B-{{podPrefix}}-215` to Active and assign it to EMP-115 with an issue date.
+4. In `PE-M3-L2_IncidentReport.csv`, preserve the seeded IDs, cite EVT-6112, describe disablement/revocation, identify the replacement badge, add your name, and write a complete incident summary.
+
+**Success check:** the lost badge is contained, the replacement is active for EMP-115, and the report documents post-loss server-room access.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="quick-reference" index="QR" title="Quick reference">
+
+| ID                                            | Meaning                                  |
+| --------------------------------------------- | ---------------------------------------- |
+| EMP-104 / `B-{{podPrefix}}-104`               | Terminated employee with an active badge |
+| CTR-209                                       | Contractor without approval              |
+| E-1002 and E-1004                             | Unauthorized server-room entries         |
+| V-3002                                        | Unescorted visitor                       |
+| `TEMP-{{podPrefix}}-014`                      | Temporary badge used in M2-L2 and M3-L1  |
+| BC-5003                                       | Badge use after recorded return          |
+| ALM-9007                                      | Forced door without a badge event        |
+| `B-{{podPrefix}}-115` / `B-{{podPrefix}}-215` | Lost badge and replacement               |
+| EVT-6112                                      | Post-loss server-room access             |
+
+```powershell
+Import-Csv "{{peArtifactsPath}}PE-M1-L2_BadgeLog.csv" | Format-Table
+```
+
+- Cite a specific file, ID, time, or status in every finding.
+- Keep dates as text if Excel attempts to reformat them.
+- Save in CSV format with the original filename.
+
+</GuideSection>
+
+<GuideSection id="completion-checklist" index="OK" title="Completion checklist">
+
+- [ ] M1-L1 Unauthorized access holders identified
+- [ ] M1-L2 Four server-room entries decided
+- [ ] M2-L1 Unescorted visitor documented
+- [ ] M2-L2 Temporary badge lifecycle completed
+- [ ] M3-L1 Badge and alarm discrepancies reconciled
+- [ ] M3-L2 Lost badge contained and incident reported
+
+<GuideCallout title="You are ready to continue" tone="check">
+
+Confirm all six PE labs in the tracker and preserve the seeded evidence beside each completed response CSV.
+
+</GuideCallout>
+
+</GuideSection>

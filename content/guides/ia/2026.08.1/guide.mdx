@@ -1,0 +1,365 @@
+<GuideSection id="before-you-begin" index="00" title="Before you begin">
+
+This guide covers all 12 Identification & Authentication labs. You will identify human and non-person accounts, review authentication policy, correct unsafe defaults, and preserve evidence in your assigned pod.
+
+<GuideCallout title="What you need" tone="check">
+
+- Your assigned pod and student number
+- Your Guacamole username and password
+- A 12+ character lab password containing uppercase, lowercase, a number, and a symbol
+- A modern web browser
+
+</GuideCallout>
+
+### CMMC Level 1 alignment
+
+| Practice    | What you practice                                                                    |
+| ----------- | ------------------------------------------------------------------------------------ |
+| IA.L1-3.5.1 | Identify users, processes acting on behalf of users, service identities, and devices |
+| IA.L1-3.5.2 | Verify identities before access and maintain effective authentication controls       |
+
+</GuideSection>
+
+<GuideSection id="connect" index="01" title="Connect to your lab">
+
+Open [Guacamole](https://guac.01.digitalrcc.com/#/) and sign in with the credentials issued for your seat.
+
+<dl className="guide-fields">
+  <GuideField label="Student" value="Student {{studentNumber}}" />
+  <GuideField label="Username" value="{{labUsername}}" />
+  <GuideField label="Connection" value="{{sessionHost}}" />
+  <GuideField label="Domain" value="{{domainName}}" />
+</dl>
+
+1. Open the Guacamole connection named `{{sessionHost}}`.
+2. Wait for the Windows desktop to load fully.
+3. Use **Ctrl + Alt + Shift** to open the Guacamole side panel when you need to return Home.
+4. Open your <GuideLink href="{{progressUrl}}">training tracker</GuideLink> to check live results.
+
+</GuideSection>
+
+<GuideSection id="workspace" index="02" title="Open the identity workspace">
+
+Use the **Active Directory Users and Computers** shortcut on `{{sessionHost}}`. If it does not open, press **Windows + R** and run:
+
+```powershell
+cmd /c "set __COMPAT_LAYER=RunAsInvoker&& start "" mmc.exe dsa.msc"
+```
+
+Run PowerShell normally unless a lab specifically asks for an elevated local-server session. Open Task Scheduler with `taskschd.msc` when instructed.
+
+### Your pod and evidence locations
+
+| Item           | Your value                       |
+| -------------- | -------------------------------- |
+| Pod            | `{{podName}}`                    |
+| Account prefix | `{{podPrefix}}`                  |
+| Evidence root  | `{{artifactsPath}}`              |
+| IA artifacts   | `{{iaArtifactsPath}}`            |
+| Scheduled task | `{{podName}} ACS Nightly Backup` |
+
+Accounts you create must retain the `{{podPrefix}}-` prefix. Automated verification also checks exact filenames and paths.
+
+<GuideCallout title="Protect the seeded evidence" tone="warning">
+
+Do not modify `_LAB_READY_` markers or unrelated source artifacts. When a lab requests a new report, save it under your own pod path with the exact filename shown.
+
+</GuideCallout>
+
+</GuideSection>
+
+<GuideSection id="module-1" index="M1" title="User identification">
+
+Make every person individually accountable and remove shared, former-user, and generic identities.
+
+<GuideLab id="M1-L1" title="Shared reception account" objective="Replace one shared identity with individually attributable accounts.">
+
+1. In ADUC, open **Students >** `{{podName}}` **> Users > Staff**.
+2. Disable `{{podPrefix}}-frontdesk`.
+3. Create Karen O'Malley as `{{podPrefix}}-k.omalley` and the temporary worker as `{{podPrefix}}-temp.agency01`.
+4. Give each account a policy-compliant password and clear **User must change password at next logon** for this lab.
+5. Save an evidence summary as `{{artifactsPath}}M1-L1.txt` naming the disabled shared account and both individual replacements.
+
+```powershell
+$p = "{{podPrefix}}"
+Disable-ADAccount -Identity "$p-frontdesk"
+Get-ADUser -Identity "$p-frontdesk" | Select-Object SamAccountName, Enabled
+```
+
+**Success check:** the shared account is disabled, both individual accounts exist, and `M1-L1.txt` is present.
+
+</GuideLab>
+
+<GuideLab id="M1-L2" title="Zombie account" objective="Remove access for a terminated user and place the identity in the terminated OU.">
+
+1. Find `{{podPrefix}}-tom.davis` under **Resources > Departments > Sales**.
+2. Disable the account.
+3. Remove every business-group membership; `Domain Users` remains.
+4. Move the account to **Users > Terminated**.
+
+```powershell
+$p = "{{podPrefix}}"
+Disable-ADAccount -Identity "$p-tom.davis"
+Get-ADUser "$p-tom.davis" -Properties MemberOf |
+  Select-Object -ExpandProperty MemberOf |
+  ForEach-Object { Remove-ADGroupMember -Identity $_ -Members "$p-tom.davis" -Confirm:$false }
+```
+
+**Success check:** `{{podPrefix}}-tom.davis` is disabled, stripped of business access, and located in the Terminated OU.
+
+</GuideLab>
+
+<GuideLab id="M1-L3" title="Generic accounts" objective="Disable identities that cannot be traced to an individual and document the authorized inventory.">
+
+1. Disable `{{podPrefix}}-admin`, `{{podPrefix}}-user1`, and `{{podPrefix}}-test`.
+2. Create `{{iaArtifactsPath}}Authorized_User_Inventory.csv` with these columns:
+
+```text
+Username,FullName,Department,Status,Justification
+```
+
+3. Include the authorized accounts created in M1-L1, terminated user `{{podPrefix}}-tom.davis`, and all three disabled generic accounts with clear justification.
+
+```powershell
+$p = "{{podPrefix}}"
+"$p-admin","$p-user1","$p-test" | ForEach-Object {
+  Disable-ADAccount -Identity $_
+}
+```
+
+**Success check:** all three generic accounts are disabled and the authorized-user CSV is nonempty.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-2" index="M2" title="Non-person entity identification">
+
+Identify the service accounts, automated processes, and devices that operate inside the pod.
+
+<GuideLab id="M2-L1" title="Scheduled task identity" objective="Move an automated backup from a human account to a dedicated service identity.">
+
+1. Create `{{podPrefix}}-svc_backup` in ADUC.
+2. Set a policy-compliant password, select **Password never expires** for this exercise, and clear **User must change password at next logon**.
+3. Set its description to `Service account for nightly backup automation`.
+4. On `{{sessionHost}}`, open Task Scheduler as administrator and find `{{podName}} ACS Nightly Backup`.
+5. In **Properties > General**, change the running identity from `{{netbiosDomain}}\{{podPrefix}}-s.jenkins` to `{{netbiosDomain}}\{{podPrefix}}-svc_backup`; provide the service password when prompted.
+6. If prompted, grant **Log on as a batch job** under `secpol.msc > Local Policies > User Rights Assignment`.
+
+```powershell
+(Get-ScheduledTask -TaskName "{{podName}} ACS Nightly Backup").Principal.UserId
+```
+
+**Success check:** the service account exists and the scheduled task uses it instead of a person.
+
+</GuideLab>
+
+<GuideLab id="M2-L2" title="Rogue device artifact" objective="Record an unknown network device and open an investigation record.">
+
+1. Review `{{iaArtifactsPath}}Authorized_Device_List.csv` and `{{artifactsPath}}LabArtifacts\rogue_mac.txt`.
+2. Append the rogue device to the authorized-device list without deleting the existing rows:
+
+```text
+UNKNOWN-DEVICE,AA-BB-CC-11-22-33,Unknown,UNAUTHORIZED,Unknown,2026-06-10
+```
+
+3. Create `{{iaArtifactsPath}}Device_Config_Record.csv` with the columns and finding below:
+
+```text
+MACAddress,DeviceName,Status,Location,Notes
+AA-BB-CC-11-22-33,Unknown Device,UNAUTHORIZED,Network scan,Rogue device detected - requires investigation
+```
+
+<GuideCallout title="This file is reused" tone="warning">
+
+M4-L2 appends an SNMP finding to `Device_Config_Record.csv`. Do not overwrite the rogue-device row when you reach that lab.
+
+</GuideCallout>
+
+</GuideLab>
+
+<GuideLab id="M2-L3" title="Service account matrix" objective="Give each non-person identity an owner, purpose, and lifecycle record.">
+
+1. Set these AD descriptions:
+   - `{{podPrefix}}-svc_backup`: Automated nightly backup service
+   - `{{podPrefix}}-svc_web`: IIS web application pool identity
+   - `{{podPrefix}}-svc_print`: Print spooler service account
+2. Create any missing service account using the same account settings from M2-L1.
+3. Create `{{iaArtifactsPath}}Service_Account_Matrix.csv` with `AccountName,Description,Owner,Purpose,PasswordRotation,LastReview` and one complete row for each account.
+
+```powershell
+$p = "{{podPrefix}}"
+Set-ADUser "$p-svc_backup" -Description "Automated nightly backup service"
+Set-ADUser "$p-svc_web" -Description "IIS web application pool identity"
+Set-ADUser "$p-svc_print" -Description "Print spooler service account"
+```
+
+**Success check:** all three accounts have descriptions and the service-account matrix is nonempty.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-3" index="M3" title="User authentication management">
+
+Review password evidence, harden local authentication, and ensure temporary credentials do not become permanent.
+
+<GuideLab id="M3-L1" title="Password policy report" objective="Export the current policy and document that it was reviewed.">
+
+1. Export the domain password policy to the exact IA artifact path.
+
+```powershell
+Get-ADDefaultDomainPasswordPolicy |
+  ConvertTo-Html -Title "Password Policy Report" |
+  Out-File "{{iaArtifactsPath}}PasswordPolicy_Report.html"
+Start-Process "{{iaArtifactsPath}}PasswordPolicy_Report.html"
+```
+
+2. Record minimum length, complexity, lockout threshold, history, and maximum age in `{{artifactsPath}}M3-L1.txt` along with the reviewer and date.
+
+**Success check:** the HTML report is nonempty and the review evidence file exists.
+
+</GuideLab>
+
+<GuideLab id="M3-L2" title="Weak local password policy" objective="Harden authentication for local accounts on your assigned server.">
+
+On `{{sessionHost}}`, open `secpol.msc` as administrator and configure:
+
+| Setting                   | Required value        |
+| ------------------------- | --------------------- |
+| Minimum password length   | 12 or more            |
+| Password complexity       | Enabled               |
+| Account lockout threshold | 1-10 invalid attempts |
+
+You may set length and lockout from an elevated PowerShell session:
+
+```powershell
+net accounts /minpwlen:12 /lockoutthreshold:10 /uniquepw:24
+```
+
+Confirm with `net accounts` and a security-policy export. The domain policy is shared; only harden your own pod server's local account policy.
+
+</GuideLab>
+
+<GuideLab id="M3-L3" title="Change password at next logon" objective="Ensure a user replaces a help-desk-issued temporary password.">
+
+1. In ADUC, reset the password for `{{podPrefix}}-d.chen`.
+2. Select **User must change password at next logon**.
+3. Save an incident summary as `{{artifactsPath}}M3-L3.txt` including the user, issue, action, and result.
+
+```powershell
+$p = "{{podPrefix}}"
+Set-ADUser -Identity "$p-d.chen" -ChangePasswordAtLogon $true
+Get-ADUser "$p-d.chen" -Properties pwdLastSet |
+  Select-Object SamAccountName, pwdLastSet
+```
+
+**Success check:** `pwdLastSet` is `0` and the incident evidence file exists.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="module-4" index="M4" title="Defaults and process authentication">
+
+Correct unsafe default credentials, document a scanner finding, and remove a password embedded in code.
+
+<GuideLab id="M4-L1" title="Default credentials standard" objective="Add an explicit default-credential requirement to the hardening standard.">
+
+1. Review `{{iaArtifactsPath}}Hardening_Standard.txt`.
+2. Add a section requiring all default passwords on hardware, operating systems, applications, SNMP, and databases to be changed before production use.
+3. Name IT Operations as responsible for verification and cite IA.L1-3.5.2.
+4. Save a summary as `{{artifactsPath}}M4-L1.txt`.
+
+**Success check:** the standard connects the words **default** and **password/credential**, and the evidence file exists.
+
+</GuideLab>
+
+<GuideLab id="M4-L2" title="Default SNMP community string" objective="Document the scanner finding without erasing earlier device evidence.">
+
+1. Read `{{artifactsPath}}LabArtifacts\Scans\openvas_scan_report.txt`.
+2. Find the high-severity `public` SNMP community string on `10.50.1.30` (`PRINT-P01`, UDP 161).
+3. Append the finding to `{{iaArtifactsPath}}Device_Config_Record.csv`; retain the M2-L2 rogue-device row.
+
+```text
+10.50.1.30,PRINT-P01,SNMP community string is 'public' (HIGH) - change to a complex value and restrict SNMP,OPEN,Network scan,From openvas_scan_report.txt
+```
+
+4. Add an SNMP clause to the hardening standard requiring non-default strings and SNMPv3 where supported.
+
+**Success check:** the device record mentions SNMP and the rogue MAC remains marked unauthorized.
+
+</GuideLab>
+
+<GuideLab id="M4-L3" title="Hardcoded password" objective="Replace an embedded secret with a vault reference and document the remediation.">
+
+1. Open `{{artifactsPath}}LabArtifacts\Scripts\db_connect.py`.
+2. Replace `DB_PASSWORD = "password123"` with:
+
+```text
+DB_PASSWORD = "VAULT_REF:db_production_password"
+```
+
+3. Create `{{iaArtifactsPath}}Vault\Vault_Entries.txt` with the columns below and a complete record for `db_production_password`.
+
+```text
+VaultKey,Description,Owner,RotationSchedule,LastRotated
+```
+
+4. Save a remediation summary as `{{artifactsPath}}M4-L3.txt` naming the finding, file, vault reference, and security impact.
+
+**Success check:** `password123` is absent, `VAULT_REF` is present, and both evidence files exist.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="quick-reference" index="QR" title="Quick reference">
+
+| Item           | Your value                  |
+| -------------- | --------------------------- |
+| Student        | Student `{{studentNumber}}` |
+| Pod            | `{{podName}}`               |
+| Username       | `{{labUsername}}`           |
+| Session host   | `{{sessionHost}}`           |
+| Account prefix | `{{podPrefix}}`             |
+| Evidence root  | `{{artifactsPath}}`         |
+| IA artifacts   | `{{iaArtifactsPath}}`       |
+
+### Common checks
+
+```powershell
+Test-Path "{{artifactsPath}}M1-L1.txt"
+Import-Module ActiveDirectory
+Get-ADUser -Filter "SamAccountName -like '{{podPrefix}}-*'"
+```
+
+- Include `{{podPrefix}}-` in every account name.
+- Keep `.csv`, `.txt`, and `.html` extensions exact; choose **All Files** in Notepad.
+- Append to reused CSVs instead of overwriting earlier evidence.
+- Run AD tools from `{{sessionHost}}`; do not alter another student's pod.
+
+</GuideSection>
+
+<GuideSection id="completion-checklist" index="OK" title="Completion checklist">
+
+- [ ] M1-L1 Shared reception account remediated
+- [ ] M1-L2 Zombie account disabled and moved
+- [ ] M1-L3 Generic accounts disabled and inventoried
+- [ ] M2-L1 Backup task uses a service account
+- [ ] M2-L2 Rogue device documented
+- [ ] M2-L3 Service account matrix completed
+- [ ] M3-L1 Password policy report exported
+- [ ] M3-L2 Local password policy hardened
+- [ ] M3-L3 Password change required at next logon
+- [ ] M4-L1 Default-credential standard added
+- [ ] M4-L2 SNMP finding documented
+- [ ] M4-L3 Hardcoded password replaced
+
+<GuideCallout title="You are ready to continue" tone="check">
+
+Confirm all 12 IA labs in the training tracker and keep the evidence under your assigned pod path.
+
+</GuideCallout>
+
+</GuideSection>

@@ -1,0 +1,155 @@
+<GuideSection id="before-you-begin" index="00" title="Before you begin">
+
+This guide covers all three Media Protection labs. You will classify simulated removable media, sanitize an FCI volume for reuse, and document destruction of end-of-life media.
+
+### CMMC Level 1 alignment
+
+| Practice    | What you practice                                                             |
+| ----------- | ----------------------------------------------------------------------------- |
+| MP.L1-3.8.3 | Sanitize or destroy media containing FCI before disposal or release for reuse |
+
+<GuideCallout title="Core lesson" tone="warning">
+
+Deleting files is not sanitization. Media must be classified, treated with an approved method, and supported by complete evidence before reuse or disposal.
+
+</GuideCallout>
+
+</GuideSection>
+
+<GuideSection id="connect" index="01" title="Connect to your lab">
+
+Open [Guacamole](https://guac.01.digitalrcc.com/#/), sign in, and open `{{sessionHost}}`.
+
+<dl className="guide-fields">
+  <GuideField label="Student" value="Student {{studentNumber}}" />
+  <GuideField label="Connection" value="{{sessionHost}}" />
+  <GuideField label="Media prefix" value="{{podPrefix}}" />
+  <GuideField label="Artifacts" value="{{mpArtifactsPath}}" />
+</dl>
+
+Use **Ctrl + Alt + Shift** for the Guacamole side panel and open your <GuideLink href="{{progressUrl}}">training tracker</GuideLink> to check results.
+
+</GuideSection>
+
+<GuideSection id="workspace" index="02" title="Open the media workspace">
+
+Open `{{mpArtifactsPath}}` in File Explorer.
+
+```powershell
+explorer "{{mpArtifactsPath}}"
+```
+
+Use the `{{podPrefix}}-...-Contents.txt` listings to inspect simulated `.vhdx` drives. Student accounts do not mount the images for classification. Graded CSVs already contain headers and blank rows; edit those files in place without renaming columns.
+
+| File                                                              | Purpose                        |
+| ----------------------------------------------------------------- | ------------------------------ |
+| `{{podPrefix}}-FCI-USB-Contents.txt`                              | Complete FCI-drive listing     |
+| `{{podPrefix}}-Employee-Handbook-Contents.txt`                    | General-business drive listing |
+| `MediaClassificationResponses.csv`                                | M1-L1 answers                  |
+| `MediaSanitizationLog.csv` and `MediaSanitizationCertificate.csv` | M1-L2 records                  |
+| `MP-M1-L3_DispositionWorksheet.csv`                               | M1-L3 decision                 |
+
+<GuideCallout title="Preserve the seed" tone="warning">
+
+Do not delete `_LAB_READY_` markers, source evidence, or `MP-M1-L2_SeedMetadata.json`. The tracker reads the exact answer filenames.
+
+</GuideCallout>
+
+</GuideSection>
+
+<GuideSection id="module-1" index="M1" title="Media protection">
+
+<GuideLab id="M1-L1" title="Classify the media" objective="Determine whether each simulated drive contains Federal Contract Information.">
+
+1. Read `MediaDisposalPolicy.pdf` and review the FCI definition.
+2. Inspect `{{podPrefix}}-FCI-USB-Contents.txt`, including **Hidden Archive** and **Temp**. Note files tied to federal contract `FA-2026-{{podPrefix}}`.
+3. Inspect `{{podPrefix}}-Employee-Handbook-Contents.txt`; it contains general internal documents but no contract data.
+4. Cross-check media IDs in `MediaInventory.xlsx` and complete `MediaClassificationWorksheet.docx`.
+5. In `MediaClassificationResponses.csv`, classify the FCI drive as `FCI` and the handbook drive as `Non-FCI`; cite specific filenames in each Evidence cell.
+
+```text
+{{podPrefix}}-FCI-USB.vhdx,FCI,Contracts and invoices reference federal contract FA-2026-{{podPrefix}}
+{{podPrefix}}-Employee-Handbook.vhdx,Non-FCI,Only employee handbook benefits and holiday documents are present
+```
+
+**Success check:** both media rows contain the correct classification and meaningful evidence.
+
+</GuideLab>
+
+<GuideLab id="M1-L2" title="Sanitize media for reuse" objective="Create a new fully formatted volume and complete both sanitization records.">
+
+1. Record the current `{{podPrefix}}-FCI-MEDIA` label and folders from the contents listing.
+2. On your assigned server, open PowerShell as administrator.
+3. Recreate the volume and perform a full NTFS format. Replace deleting files with the approved Clear process.
+
+```powershell
+$vhd = "{{mpArtifactsPath}}{{podPrefix}}-FCI-USB.vhdx"
+Mount-DiskImage -ImagePath $vhd
+$disk = Get-DiskImage -ImagePath $vhd | Get-Disk
+Clear-Disk -Number $disk.Number -RemoveData -Confirm:$false
+Initialize-Disk -Number $disk.Number -PartitionStyle MBR -ErrorAction SilentlyContinue
+$part = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter
+Format-Volume -Partition $part -FileSystem NTFS -NewFileSystemLabel "{{podPrefix}}-SANITIZED" -Full -Confirm:$false
+Get-ChildItem -Path "$($part.DriveLetter):\" -Force
+Dismount-DiskImage -ImagePath $vhd
+```
+
+4. Confirm the label is exactly `{{podPrefix}}-SANITIZED` and the volume is empty apart from system folders.
+5. Complete both `MediaSanitizationLog.csv` and `MediaSanitizationCertificate.csv` with MediaId `{{podPrefix}}-FCI-USB`, Method `Clear` or `Purge`, Result `Pass`, Disposition `Reuse`, your name, and a valid date.
+
+**Success check:** the tracker finds a new empty NTFS volume and matching completed records.
+
+</GuideLab>
+
+<GuideLab id="M1-L3" title="Decide the disposition" objective="Use asset, custody, and vendor evidence to justify destruction of failed FCI media.">
+
+1. Review `LaptopAssetRecord.csv`: `{{podPrefix}}-LAP-017` is end of life, contains FCI, failed diagnostics, and has serial `SN-{{podPrefix}}-88421`.
+2. Confirm `ChainOfCustody.csv` sends that drive to an approved destruction vendor.
+3. Confirm `VendorDestructionCertificate.txt` identifies certificate `VDC-{{podPrefix}}-2026-017`, the matching asset/serial, physical shredding, and status `DESTROYED`.
+4. In `MP-M1-L3_DispositionWorksheet.csv`, record:
+
+| Column        | Value                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------- |
+| AssetId       | `{{podPrefix}}-LAP-017`                                                                 |
+| Decision      | `Destroy`                                                                               |
+| DriveSerial   | `SN-{{podPrefix}}-88421`                                                                |
+| CertificateId | `VDC-{{podPrefix}}-2026-017`                                                            |
+| Rationale     | A full sentence citing failed diagnostics, FCI, end-of-life status, and the certificate |
+
+Reuse is not appropriate because the drive failed diagnostics; returning it to inventory leaves FCI on unreliable end-of-life media.
+
+</GuideLab>
+
+</GuideSection>
+
+<GuideSection id="quick-reference" index="QR" title="Quick reference">
+
+| Term             | Meaning                                                         |
+| ---------------- | --------------------------------------------------------------- |
+| FCI              | Government contract information not intended for public release |
+| Clear            | Overwrite so standard recovery tools cannot retrieve data       |
+| Purge            | Stronger sanitization that defeats laboratory recovery          |
+| Destroy          | Physically render the media unusable                            |
+| Chain of custody | Record of who held media, when, and why                         |
+
+- Classify the entire drive by its most sensitive content.
+- Read hidden-item listings before deciding a drive is non-FCI.
+- Complete the sanitization log **and** certificate with the same values.
+- Keep all answer CSV names and header rows unchanged.
+- Use complete evidence and rationale, not one-word answers.
+
+</GuideSection>
+
+<GuideSection id="completion-checklist" index="OK" title="Completion checklist">
+
+- [ ] M1-L1 Both media images classified with evidence
+- [ ] M1-L2 FCI volume recreated, fully formatted, and documented
+- [ ] M1-L3 Destruction decision matched to custody and certificate records
+
+<GuideCallout title="You are ready to continue" tone="check">
+
+Confirm all three MP labs in the tracker and keep the seeded evidence and completed CSVs together in `{{mpArtifactsPath}}`.
+
+</GuideCallout>
+
+</GuideSection>
