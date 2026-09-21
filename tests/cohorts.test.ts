@@ -8,6 +8,7 @@ import {
   getFirstAvailableSeat,
   getLabIdentity,
   getPodName,
+  listCohortOptions,
 } from "@/lib/cohorts";
 
 describe("cohort calendar", () => {
@@ -66,6 +67,24 @@ describe("cohort calendar", () => {
         ),
       ),
     ).toBeNull();
+  });
+
+  it("offers the running cohort first so a late registration can be seated", () => {
+    const options = listCohortOptions(new Date("2026-09-21T12:00:00.000Z"), 3);
+
+    expect(options.map((option) => option.cohortNumber)).toEqual([3, 4, 5]);
+    expect(options.map((option) => option.inProgress)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it("offers only upcoming cohorts when none is running", () => {
+    const options = listCohortOptions(new Date("2026-09-01T12:00:00.000Z"), 2);
+
+    expect(options.map((option) => option.cohortNumber)).toEqual([2, 3]);
+    expect(options.every((option) => !option.inProgress)).toBe(true);
   });
 
   it("derives the pod and lab username from the student number", () => {

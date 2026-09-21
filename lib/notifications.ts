@@ -4,6 +4,12 @@ import { createHash, createHmac } from "node:crypto";
 
 import nodemailer from "nodemailer";
 
+import {
+  escapeHtml,
+  renderBrandedEmailHtml,
+  renderBrandedEmailText,
+  type BrandedEmailInput,
+} from "@/lib/email-layout";
 import { readServerEnv, type ServerEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/types";
@@ -14,34 +20,30 @@ export type EmailContent = {
   html: string;
 };
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function paragraphsToHtml(subject: string, paragraphs: string[]) {
-  const body = paragraphs
-    .map(
-      (paragraph) => `<p style="margin:0 0 16px">${escapeHtml(paragraph)}</p>`,
-    )
-    .join("");
-
-  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0f172a"><h1 style="font-size:19px;margin:0 0 18px">${escapeHtml(subject)}</h1>${body}</div>`;
-}
-
-export function buildEmail(
+export function renderEmail(
   subject: string,
-  paragraphs: string[],
+  input: BrandedEmailInput,
 ): EmailContent {
   return {
     subject,
-    text: paragraphs.join("\n\n"),
-    html: paragraphsToHtml(subject, paragraphs),
+    text: renderBrandedEmailText(input),
+    html: renderBrandedEmailHtml(input),
   };
+}
+
+/** Plain notice in the branded shell, for staff-facing operational mail. */
+export function buildEmail(
+  subject: string,
+  paragraphs: string[],
+  badge = "NOTIFICATION",
+): EmailContent {
+  return renderEmail(subject, {
+    badge,
+    preheader: paragraphs[0] ?? subject,
+    eyebrow: "DIGITALRCC LAB COMPANION",
+    title: subject,
+    paragraphs,
+  });
 }
 
 export function renderQueueConfirmation(input: {
@@ -49,13 +51,23 @@ export function renderQueueConfirmation(input: {
   labStartDate: string;
   portalUrl: string;
 }) {
-  return buildEmail("You are in the queue for the DigitalRCC Cyber Lab", [
-    `Hello ${input.fullName},`,
-    `You have been added to the queue for the hands-on Cyber Lab session beginning ${input.labStartDate}.`,
-    "Student numbers, pods, and lab credentials are assigned automatically at 1:00 AM Eastern on the start date. Until then your queue entry shows no student number, which is expected.",
-    `You can check your place in the queue any time at ${input.portalUrl}/student/queue.`,
-    "DigitalRCC Cyber Lab Team",
-  ]);
+  return renderEmail("You are in the queue for the DigitalRCC Cyber Lab", {
+    badge: "LAB QUEUE",
+    preheader: `Your hands-on Cyber Lab session begins ${input.labStartDate}.`,
+    eyebrow: "YOU ARE ON THE LIST",
+    title: `You are in the queue, ${input.fullName}.`,
+    paragraphs: [
+      `You have been added to the queue for the hands-on Cyber Lab session beginning ${input.labStartDate}.`,
+      "Student numbers, pods, and lab credentials are assigned automatically at 1:00 AM Eastern on the start date. Until then your queue entry shows no student number, which is expected.",
+    ],
+    details: [{ label: "SESSION STARTS", value: input.labStartDate }],
+    action: {
+      label: "Check my place in the queue",
+      url: `${input.portalUrl}/student/queue`,
+    },
+    footnote:
+      "Activate your portal account from the invitation email first if you have not already.",
+  });
 }
 
 export function renderSeatAssignment(input: {
@@ -65,13 +77,26 @@ export function renderSeatAssignment(input: {
   podName: string;
   portalUrl: string;
 }) {
-  return buildEmail("Your DigitalRCC lab access is ready", [
-    `Hello ${input.fullName},`,
-    `Your hands-on lab access for the session beginning ${input.labStartDate} is now assigned: ${input.podName}, lab username ${input.labUsername}.`,
-    `Sign in at ${input.portalUrl}/student/start for your personalized quick start, connection details, and lab guides.`,
-    "Your lab password is never sent by email. Retrieve it from the portal after signing in.",
-    "DigitalRCC Cyber Lab Team",
-  ]);
+  return renderEmail("Your DigitalRCC lab access is ready", {
+    badge: "LAB ACCESS",
+    preheader: `${input.podName} is reserved for you as ${input.labUsername}.`,
+    eyebrow: "YOUR POD IS READY",
+    title: `Your lab access is ready, ${input.fullName}.`,
+    paragraphs: [
+      `Your hands-on lab for the session beginning ${input.labStartDate} is assigned. Sign in to the portal for your personalized quick start, connection details, and lab guides.`,
+    ],
+    details: [
+      { label: "POD", value: input.podName },
+      { label: "LAB USERNAME", value: input.labUsername },
+      { label: "SESSION STARTS", value: input.labStartDate },
+    ],
+    action: {
+      label: "Open my quick start",
+      url: `${input.portalUrl}/student/start`,
+    },
+    footnote:
+      "Your lab password is never sent by email. Retrieve it from the portal after signing in.",
+  });
 }
 
 export async function queueEmail(input: {
@@ -191,7 +216,7 @@ async function deliverEmailJob(
       if (job.template_name.startsWith("support_")) {
         await sendSupportEmail(env, message);
       } else {
-        await sendSesEmail(env, message);
+        await sendStudentEmail(env, message);
       }
     }
 
@@ -219,6 +244,34 @@ async function sendSupportEmail(
   env: ServerEnv,
   message: { to: string; subject: string; text: string; html: string },
 ) {
+  return sendSmtpEmail(env, message, {
+    name: env.SUPPORT_FROM_NAME,
+    address: env.SUPPORT_EMAIL,
+    replyTo: env.SUPPORT_EMAIL,
+  });
+}
+
+/**
+ * Student-facing mail goes out over the same authenticated Google Workspace
+ * relay as support mail, but from the no-reply identity. SES stays as a
+ * fallback for deployments that configure it instead.
+ */
+async function sendStudentEmail(
+  env: ServerEnv,
+  message: { to: string; subject: string; text: string; html: string },
+) {
+  return sendSmtpEmail(env, message, {
+    name: env.NOTIFICATION_FROM_NAME,
+    address: env.NOTIFICATION_FROM_EMAIL,
+    replyTo: env.NOTIFICATION_REPLY_TO ?? env.SUPPORT_EMAIL,
+  });
+}
+
+async function sendSmtpEmail(
+  env: ServerEnv,
+  message: { to: string; subject: string; text: string; html: string },
+  sender: { name: string; address: string; replyTo: string },
+) {
   if (!env.SUPPORT_SMTP_USER || !env.SUPPORT_SMTP_PASSWORD) {
     return sendSesEmail(env, message);
   }
@@ -235,10 +288,10 @@ async function sendSupportEmail(
 
   await transport.sendMail({
     from: {
-      name: env.SUPPORT_FROM_NAME,
-      address: env.SUPPORT_EMAIL,
+      name: sender.name,
+      address: sender.address,
     },
-    replyTo: env.SUPPORT_EMAIL,
+    replyTo: sender.replyTo,
     to: message.to,
     subject: message.subject,
     text: message.text,

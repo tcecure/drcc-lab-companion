@@ -33,6 +33,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 type ImportResult = {
   queued: number;
   alreadyQueued: number;
+  assigned: number;
 };
 
 type ActiveImportResult = {
@@ -307,11 +308,17 @@ async function importRows(
   const supabase = createAdminClient();
   const studentRoleId = await getStudentRoleId(supabase);
 
-  const result: ImportResult = { queued: 0, alreadyQueued: 0 };
+  const result: ImportResult = { queued: 0, alreadyQueued: 0, assigned: 0 };
+  let cohortAlreadyStarted = false;
 
   for (const row of rows) {
     const cohortNumber = resolveCohortNumber(row, selectedCohort);
     const schedule = getCohortSchedule(cohortNumber);
+
+    if (new Date(schedule.assignmentRunAt) <= new Date()) {
+      cohortAlreadyStarted = true;
+    }
+
     const userId = await ensureStudentAccount({
       actorId,
       mode: "invite",
@@ -357,6 +364,14 @@ async function importRows(
 
   await processQueuedEmails();
 
+  // A cohort whose 1:00 AM assignment time has passed would otherwise wait for
+  // the next scheduled run, leaving a late registration without a pod.
+  if (cohortAlreadyStarted) {
+    const assignment = await runCohortAssignment();
+
+    result.assigned = assignment.assigned;
+  }
+
   return result;
 }
 
@@ -398,6 +413,12 @@ function summarize(result: ImportResult) {
 
   if (result.alreadyQueued) {
     parts.push(`${result.alreadyQueued} already had a queue entry`);
+  }
+
+  if (result.assigned) {
+    parts.push(`assigned ${result.assigned} student numbers now`);
+
+    return `${parts.join(", ")}.`;
   }
 
   return `${parts.join(", ")}. Student numbers are assigned at 1:00 AM Eastern on the cohort start date.`;

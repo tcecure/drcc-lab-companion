@@ -151,12 +151,23 @@ export function getCohortNumberForStartDate(dateIso: string) {
   return null;
 }
 
+/**
+ * Cohorts an admin may import into: the cohort currently running (a late
+ * registration still needs a seat today) followed by the upcoming ones.
+ */
 export function listCohortOptions(now = new Date(), count = 8) {
-  const first = getNextCohortNumber(now) ?? cohortConfig.lastCohortNumber;
+  const first =
+    getCurrentCohortNumber(now) ??
+    getNextCohortNumber(now) ??
+    cohortConfig.lastCohortNumber;
 
   return Array.from({ length: count }, (_, index) => first + index)
     .filter((cohortNumber) => cohortNumber <= cohortConfig.lastCohortNumber)
-    .map(getCohortSchedule);
+    .map(getCohortSchedule)
+    .map((schedule) => ({
+      ...schedule,
+      inProgress: new Date(schedule.accessStartsAt) <= now,
+    }));
 }
 
 export function getPodName(seatNumber: number) {

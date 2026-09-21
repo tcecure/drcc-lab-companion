@@ -16,14 +16,29 @@
         .step-number {
           width: 36px !important;
         }
+        .email-logo {
+          width: 152px !important;
+        }
       }
     </style>
   </head>
   <body
-    style="margin: 0; padding: 0; background: #050b16; color: #e8f4ff; font-family: Arial, Helvetica, sans-serif;"
+    style="
+      margin: 0;
+      padding: 0;
+      background: #050b16;
+      color: #e8f4ff;
+      font-family: Arial, Helvetica, sans-serif;
+    "
   >
     <div
-      style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;"
+      style="
+        display: none;
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        color: transparent;
+      "
     >
       Your DigitalRCC Lab Companion account is ready to activate.
     </div>
@@ -33,10 +48,10 @@
       cellspacing="0"
       cellpadding="0"
       border="0"
-      style="background: #050b16;"
+      style="background: #050b16"
     >
       <tr>
-        <td align="center" style="padding: 36px 16px;">
+        <td align="center" style="padding: 36px 16px">
           <table
             class="email-shell"
             role="presentation"
@@ -44,12 +59,19 @@
             cellspacing="0"
             cellpadding="0"
             border="0"
-            style="width: 600px; max-width: 600px; background: #0d1b2f; border: 1px solid #1d4761; border-radius: 8px; overflow: hidden;"
+            style="
+              width: 600px;
+              max-width: 600px;
+              background: #0d1b2f;
+              border: 1px solid #1d4761;
+              border-radius: 8px;
+              overflow: hidden;
+            "
           >
             <tr>
               <td
                 class="email-pad"
-                style="padding: 28px 36px; border-bottom: 1px solid #1d4761;"
+                style="padding: 28px 36px; border-bottom: 1px solid #1d4761"
               >
                 <table
                   role="presentation"
@@ -59,42 +81,32 @@
                   border="0"
                 >
                   <tr>
-                    <td width="56" valign="middle">
-                      <table
-                        role="presentation"
-                        width="44"
-                        height="44"
-                        cellspacing="0"
-                        cellpadding="0"
-                        border="0"
-                        style="width: 44px; height: 44px; background: #36d5f5; border-radius: 8px;"
-                      >
-                        <tr>
-                          <td
-                            align="center"
-                            valign="middle"
-                            style="color: #03111e; font-size: 15px; font-weight: 800;"
-                          >
-                            DR
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
                     <td valign="middle">
-                      <div
-                        style="font-size: 18px; line-height: 24px; font-weight: 800; color: #f4f9ff;"
-                      >
-                        DigitalRCC
-                      </div>
-                      <div
-                        style="font-size: 12px; line-height: 18px; color: #8facbf;"
-                      >
-                        Lab Companion
-                      </div>
+                      <img
+                        src="https://my.digitalrcc.com/brand/digitalrcc-email-logo.png"
+                        class="email-logo"
+                        width="176"
+                        alt="DigitalRCC"
+                        style="
+                          display: block;
+                          width: 176px;
+                          max-width: 176px;
+                          height: auto;
+                          border: 0;
+                        "
+                      />
                     </td>
                     <td align="right" valign="middle">
                       <span
-                        style="display: inline-block; padding: 6px 10px; border: 1px solid #25617a; border-radius: 999px; color: #a9ecf8; font-size: 11px; font-weight: 700;"
+                        style="
+                          display: inline-block;
+                          padding: 6px 10px;
+                          border: 1px solid #25617a;
+                          border-radius: 999px;
+                          color: #a9ecf8;
+                          font-size: 11px;
+                          font-weight: 700;
+                        "
                       >
                         ACCOUNT INVITE
                       </span>
@@ -104,28 +116,51 @@
               </td>
             </tr>
             <tr>
-              <td class="email-pad" style="padding: 40px 36px 20px;">
+              <td class="email-pad" style="padding: 40px 36px 20px">
                 <div
-                  style="margin-bottom: 12px; color: #74dff4; font-size: 11px; line-height: 16px; font-weight: 800; text-transform: uppercase;"
+                  style="
+                    margin-bottom: 12px;
+                    color: #74dff4;
+                    font-size: 11px;
+                    line-height: 16px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                  "
                 >
                   Welcome to the clinic
                 </div>
                 {{ if .Data.full_name }}
                 <h1
-                  style="margin: 0; color: #f4f9ff; font-size: 30px; line-height: 38px; font-weight: 800;"
+                  style="
+                    margin: 0;
+                    color: #f4f9ff;
+                    font-size: 30px;
+                    line-height: 38px;
+                    font-weight: 800;
+                  "
                 >
                   Welcome, {{ .Data.full_name }}.
                 </h1>
                 {{ else }}
                 <h1
-                  style="margin: 0; color: #f4f9ff; font-size: 30px; line-height: 38px; font-weight: 800;"
+                  style="
+                    margin: 0;
+                    color: #f4f9ff;
+                    font-size: 30px;
+                    line-height: 38px;
+                    font-weight: 800;
+                  "
                 >
                   Welcome to DigitalRCC.
                 </h1>
-                {{ end }}
-                {{ if eq .Data.organization "DigitalRCC Operations" }}
+                {{ end }} {{ if eq .Data.organization "DigitalRCC Operations" }}
                 <p
-                  style="margin: 18px 0 0; color: #b8cada; font-size: 16px; line-height: 26px;"
+                  style="
+                    margin: 18px 0 0;
+                    color: #b8cada;
+                    font-size: 16px;
+                    line-height: 26px;
+                  "
                 >
                   You have been invited to the Digital Resilience Community
                   Clinic operations workspace. Activate your account to review
@@ -133,7 +168,12 @@
                 </p>
                 {{ else }}
                 <p
-                  style="margin: 18px 0 0; color: #b8cada; font-size: 16px; line-height: 26px;"
+                  style="
+                    margin: 18px 0 0;
+                    color: #b8cada;
+                    font-size: 16px;
+                    line-height: 26px;
+                  "
                 >
                   You have been invited to the Digital Resilience Community
                   Clinic Lab Companion. Activate your account to view lab
@@ -143,25 +183,38 @@
               </td>
             </tr>
             <tr>
-              <td class="email-pad" style="padding: 12px 36px 10px;">
+              <td class="email-pad" style="padding: 12px 36px 10px">
                 <table
                   role="presentation"
                   width="100%"
                   cellspacing="0"
                   cellpadding="0"
                   border="0"
-                  style="border-top: 1px solid #18384e; border-bottom: 1px solid #18384e;"
+                  style="
+                    border-top: 1px solid #18384e;
+                    border-bottom: 1px solid #18384e;
+                  "
                 >
                   <tr>
                     <td
                       class="step-number"
                       width="48"
-                      style="padding: 18px 0; color: #36d5f5; font-size: 13px; font-weight: 800;"
+                      style="
+                        padding: 18px 0;
+                        color: #36d5f5;
+                        font-size: 13px;
+                        font-weight: 800;
+                      "
                     >
                       01
                     </td>
                     <td
-                      style="padding: 18px 0; color: #dceaf5; font-size: 14px; line-height: 20px;"
+                      style="
+                        padding: 18px 0;
+                        color: #dceaf5;
+                        font-size: 14px;
+                        line-height: 20px;
+                      "
                     >
                       Activate your DigitalRCC account
                     </td>
@@ -170,12 +223,24 @@
                     <td
                       class="step-number"
                       width="48"
-                      style="padding: 18px 0; border-top: 1px solid #18384e; color: #36d5f5; font-size: 13px; font-weight: 800;"
+                      style="
+                        padding: 18px 0;
+                        border-top: 1px solid #18384e;
+                        color: #36d5f5;
+                        font-size: 13px;
+                        font-weight: 800;
+                      "
                     >
                       02
                     </td>
                     <td
-                      style="padding: 18px 0; border-top: 1px solid #18384e; color: #dceaf5; font-size: 14px; line-height: 20px;"
+                      style="
+                        padding: 18px 0;
+                        border-top: 1px solid #18384e;
+                        color: #dceaf5;
+                        font-size: 14px;
+                        line-height: 20px;
+                      "
                     >
                       Create a secure password
                     </td>
@@ -184,12 +249,24 @@
                     <td
                       class="step-number"
                       width="48"
-                      style="padding: 18px 0; border-top: 1px solid #18384e; color: #36d5f5; font-size: 13px; font-weight: 800;"
+                      style="
+                        padding: 18px 0;
+                        border-top: 1px solid #18384e;
+                        color: #36d5f5;
+                        font-size: 13px;
+                        font-weight: 800;
+                      "
                     >
                       03
                     </td>
                     <td
-                      style="padding: 18px 0; border-top: 1px solid #18384e; color: #dceaf5; font-size: 14px; line-height: 20px;"
+                      style="
+                        padding: 18px 0;
+                        border-top: 1px solid #18384e;
+                        color: #dceaf5;
+                        font-size: 14px;
+                        line-height: 20px;
+                      "
                     >
                       Open your role-specific workspace
                     </td>
@@ -198,7 +275,7 @@
               </td>
             </tr>
             <tr>
-              <td class="email-pad" style="padding: 26px 36px 18px;">
+              <td class="email-pad" style="padding: 26px 36px 18px">
                 <table
                   role="presentation"
                   cellspacing="0"
@@ -209,11 +286,19 @@
                     <td
                       align="center"
                       bgcolor="#36d5f5"
-                      style="border-radius: 6px;"
+                      style="border-radius: 6px"
                     >
                       <a
                         href="{{ .SiteURL }}/auth/invite?token_hash={{ .TokenHash }}&amp;type=invite"
-                        style="display: inline-block; padding: 14px 22px; color: #03111e; font-size: 15px; line-height: 20px; font-weight: 800; text-decoration: none;"
+                        style="
+                          display: inline-block;
+                          padding: 14px 22px;
+                          color: #03111e;
+                          font-size: 15px;
+                          line-height: 20px;
+                          font-weight: 800;
+                          text-decoration: none;
+                        "
                       >
                         Activate my account
                       </a>
@@ -223,16 +308,26 @@
               </td>
             </tr>
             <tr>
-              <td class="email-pad" style="padding: 4px 36px 36px;">
+              <td class="email-pad" style="padding: 4px 36px 36px">
                 <p
-                  style="margin: 0; color: #819bae; font-size: 12px; line-height: 20px;"
+                  style="
+                    margin: 0;
+                    color: #819bae;
+                    font-size: 12px;
+                    line-height: 20px;
+                  "
                 >
                   This invitation is intended for {{ .Email }}. If the button
                   does not work, open this link:<br />
                   <a
                     href="{{ .SiteURL }}/auth/invite?token_hash={{ .TokenHash }}&amp;type=invite"
-                    style="color: #74dff4; text-decoration: underline; word-break: break-all;"
-                    >Open the secure account activation link</a
+                    style="
+                      color: #74dff4;
+                      text-decoration: underline;
+                      word-break: break-all;
+                    "
+                    >{{ .SiteURL }}/auth/invite?token_hash={{ .TokenHash
+                    }}&amp;type=invite</a
                   >
                 </p>
               </td>
@@ -240,20 +335,34 @@
             <tr>
               <td
                 class="email-pad"
-                style="padding: 24px 36px; background: #091526; border-top: 1px solid #18384e;"
+                style="
+                  padding: 24px 36px;
+                  background: #091526;
+                  border-top: 1px solid #18384e;
+                "
               >
                 <p
-                  style="margin: 0; color: #8fa8bb; font-size: 12px; line-height: 20px;"
+                  style="
+                    margin: 0;
+                    color: #8fa8bb;
+                    font-size: 12px;
+                    line-height: 20px;
+                  "
                 >
                   Need help? Contact
                   <a
                     href="mailto:support@digitalrcc.com"
-                    style="color: #74dff4; text-decoration: none;"
+                    style="color: #74dff4; text-decoration: none"
                     >support@digitalrcc.com</a
                   >.
                 </p>
                 <p
-                  style="margin: 8px 0 0; color: #657f93; font-size: 11px; line-height: 18px;"
+                  style="
+                    margin: 8px 0 0;
+                    color: #657f93;
+                    font-size: 11px;
+                    line-height: 18px;
+                  "
                 >
                   Digital Resilience Community Clinic · Hands-on cyber
                   resilience training
