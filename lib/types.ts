@@ -666,6 +666,32 @@ export type Database = {
         };
         Relationships: [];
       };
+      student_cohort_ratings: {
+        Row: {
+          id: string;
+          user_id: string;
+          cohort_number: number;
+          rating: number;
+          note: string | null;
+          rated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          cohort_number: number;
+          rating: number;
+          note?: string | null;
+          rated_by?: string | null;
+        };
+        Update: {
+          rating?: number;
+          note?: string | null;
+          rated_by?: string | null;
+        };
+        Relationships: [];
+      };
       moodle_progress_snapshots: {
         Row: {
           id: string;

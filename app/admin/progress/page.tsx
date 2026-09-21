@@ -3,7 +3,9 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/card";
+import { StudentRating } from "@/components/student-rating";
 import { requireManager } from "@/lib/auth";
+import { listCohortRatings } from "@/lib/cohort-ratings";
 import {
   buildCohortStandings,
   fetchLiveCohortSnapshot,
@@ -24,7 +26,7 @@ import {
 export const dynamic = "force-dynamic";
 
 type AdminProgressPageProps = {
-  searchParams: Promise<{ cohort?: string; pod?: string }>;
+  searchParams: Promise<{ cohort?: string; error?: string; pod?: string }>;
 };
 
 const statusLabels: Record<StandingRow["status"], string> = {
@@ -152,6 +154,9 @@ export default async function AdminProgressPage({
         )) ?? storedSnapshot)
       : storedSnapshot;
   const standings = buildCohortStandings(snapshot, roster);
+  // A rating is staff judgement on a finished cohort, so the active cohort
+  // shows nothing to set yet.
+  const ratings = await listCohortRatings(shownCohortNumber);
   const summary = summarizeStandings(standings);
   const requestedPod = podNumberFromPodName(
     params.pod ? `Pod${params.pod}` : null,
@@ -181,6 +186,11 @@ export default async function AdminProgressPage({
 
   return (
     <AppShell roles={roles} title="Student Progress">
+      {params.error ? (
+        <p className="rounded-lg border border-rose-300/30 bg-rose-400/10 p-3 text-sm text-rose-100">
+          {params.error}
+        </p>
+      ) : null}
       <Card
         eyebrow={cohortEyebrow(shownCohortNumber, isActive, snapshot)}
         title={isActive ? "Live training tracker" : "Cohort snapshot"}
@@ -253,6 +263,7 @@ export default async function AdminProgressPage({
                 <tr>
                   <th className="py-2 pr-4">#</th>
                   <th className="py-2 pr-4">Student</th>
+                  <th className="py-2 pr-4">Rating</th>
                   <th className="py-2 pr-4">Pod</th>
                   <th className="py-2 pr-4">Labs</th>
                   {familyCodes.map((code) => (
@@ -278,6 +289,21 @@ export default async function AdminProgressPage({
                       <span className="mt-1 block truncate text-xs text-slate-400">
                         {student.email || "Email unavailable"}
                       </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StudentRating
+                        cohortNumber={shownCohortNumber ?? 0}
+                        editable={!isActive}
+                        fullName={
+                          student.fullName || `Student ${student.podNumber}`
+                        }
+                        rating={
+                          student.userId
+                            ? (ratings.get(student.userId) ?? null)
+                            : null
+                        }
+                        userId={student.userId}
+                      />
                     </td>
                     <td className="py-3 pr-4 text-slate-300">
                       {student.podName}
