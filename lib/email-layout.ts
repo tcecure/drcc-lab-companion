@@ -5,10 +5,12 @@
  * because Gmail and Outlook strip stylesheets.
  */
 
+const logoUrl = "https://my.digitalrcc.com/brand/digitalrcc-email-logo.png";
 const shellBackground = "#050b16";
 const cardBackground = "#0d1b2f";
 const cardBorder = "#1d4761";
 const divider = "#18384e";
+const panel = "#091526";
 const accent = "#36d5f5";
 const accentSoft = "#74dff4";
 const heading = "#f4f9ff";
@@ -50,8 +52,10 @@ function detailRows(details: EmailDetail[]) {
     .map(
       (detail, index) => `
                   <tr>
-                    <td width="150" style="padding:14px 0;${index > 0 ? `border-top:1px solid ${divider};` : ""}color:${accent};font-size:12px;line-height:18px;font-weight:800;text-transform:uppercase;">${escapeHtml(detail.label)}</td>
-                    <td style="padding:14px 0;${index > 0 ? `border-top:1px solid ${divider};` : ""}color:#dceaf5;font-size:14px;line-height:20px;">${escapeHtml(detail.value)}</td>
+                    <td style="padding:16px 20px;${index > 0 ? `border-top:1px solid ${divider};` : ""}">
+                      <div style="color:${accentSoft};font-size:10px;line-height:15px;font-weight:800;text-transform:uppercase;">${escapeHtml(detail.label)}</div>
+                      <div style="margin-top:4px;color:${heading};font-size:16px;line-height:22px;font-weight:700;">${escapeHtml(detail.value)}</div>
+                    </td>
                   </tr>`,
     )
     .join("");
@@ -64,8 +68,8 @@ function detailsBlock(details: EmailDetail[] | undefined) {
 
   return `
             <tr>
-              <td class="email-pad" style="padding:12px 36px 10px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top:1px solid ${divider};border-bottom:1px solid ${divider};">${detailRows(details)}
+              <td class="email-pad" style="padding:12px 36px 8px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${panel};border:1px solid ${divider};border-radius:6px;">${detailRows(details)}
                 </table>
               </td>
             </tr>`;
@@ -128,6 +132,7 @@ export function renderBrandedEmailHtml(input: BrandedEmailInput) {
       @media only screen and (max-width: 620px) {
         .email-shell { width: 100% !important; }
         .email-pad { padding-left: 24px !important; padding-right: 24px !important; }
+        .email-logo { width: 152px !important; }
       }
     </style>
   </head>
@@ -141,19 +146,11 @@ export function renderBrandedEmailHtml(input: BrandedEmailInput) {
               <td class="email-pad" style="padding:28px 36px;border-bottom:1px solid ${cardBorder};">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                   <tr>
-                    <td width="56" valign="middle">
-                      <table role="presentation" width="44" height="44" cellspacing="0" cellpadding="0" border="0" style="width:44px;height:44px;background:${accent};border-radius:8px;">
-                        <tr>
-                          <td align="center" valign="middle" style="color:#03111e;font-size:15px;font-weight:800;">DR</td>
-                        </tr>
-                      </table>
-                    </td>
                     <td valign="middle">
-                      <div style="font-size:18px;line-height:24px;font-weight:800;color:${heading};">DigitalRCC</div>
-                      <div style="font-size:12px;line-height:18px;color:#8facbf;">Lab Companion</div>
+                      <img class="email-logo" src="${logoUrl}" width="176" alt="DigitalRCC" style="display:block;width:176px;max-width:176px;height:auto;border:0;" />
                     </td>
                     <td align="right" valign="middle">
-                      <span style="display:inline-block;padding:6px 10px;border:1px solid #25617a;border-radius:999px;color:#a9ecf8;font-size:11px;font-weight:700;">${escapeHtml(input.badge.toUpperCase())}</span>
+                      <span style="display:inline-block;padding:6px 10px;border:1px solid #25617a;border-radius:999px;color:#a9ecf8;font-size:11px;line-height:16px;font-weight:700;">${escapeHtml(input.badge.toUpperCase())}</span>
                     </td>
                   </tr>
                 </table>
@@ -162,7 +159,7 @@ export function renderBrandedEmailHtml(input: BrandedEmailInput) {
             <tr>
               <td class="email-pad" style="padding:40px 36px 20px;">
                 <div style="margin-bottom:12px;color:${accentSoft};font-size:11px;line-height:16px;font-weight:800;text-transform:uppercase;">${escapeHtml(input.eyebrow)}</div>
-                <h1 style="margin:0;color:${heading};font-size:28px;line-height:36px;font-weight:800;">${escapeHtml(input.title)}</h1>
+                <h1 style="margin:0;color:${heading};font-size:30px;line-height:38px;font-weight:800;">${escapeHtml(input.title)}</h1>
                 ${paragraphs}
               </td>
             </tr>${detailsBlock(input.details)}${actionBlock(input.action)}${footnoteBlock(input.footnote)}

@@ -35,12 +35,12 @@ export function renderEmail(
 export function buildEmail(
   subject: string,
   paragraphs: string[],
-  badge = "Notification",
+  badge = "NOTIFICATION",
 ): EmailContent {
   return renderEmail(subject, {
     badge,
     preheader: paragraphs[0] ?? subject,
-    eyebrow: "DigitalRCC Lab Companion",
+    eyebrow: "DIGITALRCC LAB COMPANION",
     title: subject,
     paragraphs,
   });
@@ -52,15 +52,15 @@ export function renderQueueConfirmation(input: {
   portalUrl: string;
 }) {
   return renderEmail("You are in the queue for the DigitalRCC Cyber Lab", {
-    badge: "Lab Queue",
+    badge: "LAB QUEUE",
     preheader: `Your hands-on Cyber Lab session begins ${input.labStartDate}.`,
-    eyebrow: "You are on the list",
+    eyebrow: "YOU ARE ON THE LIST",
     title: `You are in the queue, ${input.fullName}.`,
     paragraphs: [
       `You have been added to the queue for the hands-on Cyber Lab session beginning ${input.labStartDate}.`,
       "Student numbers, pods, and lab credentials are assigned automatically at 1:00 AM Eastern on the start date. Until then your queue entry shows no student number, which is expected.",
     ],
-    details: [{ label: "Session starts", value: input.labStartDate }],
+    details: [{ label: "SESSION STARTS", value: input.labStartDate }],
     action: {
       label: "Check my place in the queue",
       url: `${input.portalUrl}/student/queue`,
@@ -78,17 +78,17 @@ export function renderSeatAssignment(input: {
   portalUrl: string;
 }) {
   return renderEmail("Your DigitalRCC lab access is ready", {
-    badge: "Lab Access",
+    badge: "LAB ACCESS",
     preheader: `${input.podName} is reserved for you as ${input.labUsername}.`,
-    eyebrow: "Your pod is ready",
+    eyebrow: "YOUR POD IS READY",
     title: `Your lab access is ready, ${input.fullName}.`,
     paragraphs: [
       `Your hands-on lab for the session beginning ${input.labStartDate} is assigned. Sign in to the portal for your personalized quick start, connection details, and lab guides.`,
     ],
     details: [
-      { label: "Pod", value: input.podName },
-      { label: "Lab username", value: input.labUsername },
-      { label: "Session starts", value: input.labStartDate },
+      { label: "POD", value: input.podName },
+      { label: "LAB USERNAME", value: input.labUsername },
+      { label: "SESSION STARTS", value: input.labStartDate },
     ],
     action: {
       label: "Open my quick start",
