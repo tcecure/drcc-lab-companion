@@ -78,7 +78,7 @@ UI shows "A supportRequestId is required.", which looks like a product bug but i
 Insert a ticket with `gen_random_uuid()` to exercise the real start path. If this ever bites real
 data, loosening the schema to a plain UUID regex would be the fix.
 
-## Testing the deployed pilot (drcc-labops-01 behind https://labops.drcc.digitalrcc.com)
+## Testing the deployed pilot (drcc-labops-01 behind https://labops.digitalrcc.com)
 
 The live gateway is a Next.js *standalone* build, so `NEXT_PUBLIC_*` values are inlined at BUILD
 time: a release built with a `.env.local` pointing at the wrong project will authenticate against
