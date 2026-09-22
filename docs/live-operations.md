@@ -130,14 +130,21 @@ session`), so the two views cannot disagree about who is connected.
   Guacamole account is stored but not attributed to a student.
 - Failed logins for non-existent usernames have no Moodle user id, so they appear
   in the connector's totals but cannot be attributed to a learner.
-- Two orphaned Guacamole history rows from February 2026 (`POD01-WS01`) remain
-  open in Guacamole's history; they are reported as stale, not live, and will keep
-  flagging that lab account for attention until Guacamole's history is cleaned up.
+- Two orphaned Guacamole history rows from February 2026 (`POD01-WS01`, under
+  `student01`) remain open in Guacamole's history. They are stored but attributed
+  to nobody, because seat 1 is `queued` and has no Moodle-matched learner, so they
+  flag no one for attention; they would read as stale, not live, if that seat were
+  ever matched.
 - Only the small subset of Moodle learners with a matching portal account gets
   cohort/pod/member-server mapping.
 - Presentation Mode is unchanged and remains aggregate-only.
 
 ## Deployment
+
+Deployed to production on 2026-09-15 (commit `bf83c28`): migration applied,
+`GUACAMOLE_INGEST_SECRET` set in Vercel, both timers enabled. First real runs
+collected 4 009 Moodle events (cursor 211170) and 34 failed logins, and 2
+Guacamole history rows; all three connectors report `ok`.
 
 1. Apply `supabase/migrations/20260915000000_moodle_live_operations.sql` to
    production Supabase (additive: four tables, one view, two functions, RLS on).
