@@ -692,6 +692,75 @@ export type Database = {
         };
         Relationships: [];
       };
+      lab_pod_credentials: {
+        Row: {
+          id: string;
+          seat_number: number;
+          pod_name: string;
+          lab_username: string;
+          secret_ciphertext: string;
+          secret_nonce: string;
+          secret_tag: string;
+          key_version: number;
+          status: "active" | "pending_push";
+          rotated_at: string;
+          rotated_by: string | null;
+          pushed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          seat_number: number;
+          pod_name: string;
+          lab_username: string;
+          secret_ciphertext: string;
+          secret_nonce: string;
+          secret_tag: string;
+          key_version?: number;
+          status?: "active" | "pending_push";
+          rotated_at?: string;
+          rotated_by?: string | null;
+          pushed_at?: string | null;
+        };
+        Update: {
+          pod_name?: string;
+          lab_username?: string;
+          secret_ciphertext?: string;
+          secret_nonce?: string;
+          secret_tag?: string;
+          key_version?: number;
+          status?: "active" | "pending_push";
+          rotated_at?: string;
+          rotated_by?: string | null;
+          pushed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      lab_credential_events: {
+        Row: {
+          id: string;
+          seat_number: number;
+          action: "store" | "rotate" | "reveal" | "push";
+          actor_role: "student" | "staff" | "integration";
+          actor_user_id: string | null;
+          detail: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          seat_number: number;
+          action: "store" | "rotate" | "reveal" | "push";
+          actor_role: "student" | "staff" | "integration";
+          actor_user_id?: string | null;
+          detail?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          detail?: string | null;
+        };
+        Relationships: [];
+      };
       moodle_progress_snapshots: {
         Row: {
           id: string;
