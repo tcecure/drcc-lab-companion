@@ -10,6 +10,19 @@ alter table public.lab_pod_credentials
   add column if not exists pending_tag text,
   add column if not exists pending_rotated_at timestamptz;
 
+-- A pending_push row written before this change holds the staged password in
+-- the single old slot, so it belongs in the pending one.
+update public.lab_pod_credentials
+set
+  pending_ciphertext = secret_ciphertext,
+  pending_nonce = secret_nonce,
+  pending_rotated_at = coalesce(pending_rotated_at, rotated_at),
+  pending_tag = secret_tag,
+  secret_ciphertext = null,
+  secret_nonce = null,
+  secret_tag = null
+where status = 'pending_push' and pending_ciphertext is null;
+
 alter table public.lab_pod_credentials
   drop constraint if exists lab_pod_credentials_slots_match_status;
 
