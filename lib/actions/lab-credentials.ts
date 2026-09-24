@@ -53,11 +53,11 @@ export async function revealMyLabCredentialAction(): Promise<StudentCredentialRe
     };
   }
 
-  if (credential.status === "pending_push") {
+  if (credential.password === null) {
     return {
       ok: false,
       error:
-        "Your new pod password is still being applied to the lab. Try again in a few minutes.",
+        "Your pod password is still being applied to the lab. Try again in a few minutes.",
     };
   }
 
@@ -127,6 +127,14 @@ export async function revealLabCredentialForStaffAction(
 
   if (!credential) {
     return { ok: false, error: "No credential stored for that seat." };
+  }
+
+  if (credential.password === null) {
+    return {
+      ok: false,
+      error:
+        "This seat has a rotation staged but no password the lab accepts yet. It becomes readable once the push completes.",
+    };
   }
 
   return {

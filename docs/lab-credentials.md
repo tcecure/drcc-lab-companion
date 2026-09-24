@@ -8,8 +8,10 @@ to the lab through a bridge that reports back when the change is live.
 
 ## Storage
 
-`lab_pod_credentials` holds one row per seat with the password encrypted under
-AES-256-GCM (`secret_ciphertext`, `secret_nonce`, `secret_tag`, `key_version`).
+`lab_pod_credentials` holds one row per seat with two encrypted slots under
+AES-256-GCM: the password the lab currently accepts (`secret_ciphertext`,
+`secret_nonce`, `secret_tag`) and the one a rotation has staged but not yet
+applied (`pending_ciphertext`, `pending_nonce`, `pending_tag`).
 The key is `LAB_CREDENTIAL_ENCRYPTION_KEY`, 32 random bytes in base64:
 
 ```bash
@@ -39,12 +41,18 @@ actor role and user id. The audit table stores no plaintext.
 
 Rotation is two-phase so that access never breaks mid-lab:
 
-1. Staff rotate a seat. A new password is generated and stored as
-   `pending_push`. The student keeps seeing the previous password, which still
-   works in the lab.
+1. Staff rotate a seat. A new password is generated into the pending slot and
+   the row is marked `pending_push`. The live slot is untouched, so the student
+   keeps seeing the password the lab still accepts.
 2. The lab-side bridge reads the pending rotations, applies them to Active
    Directory and to the pod's Guacamole connection, then acknowledges the seats.
-   The row flips to `active` and the student sees the new password.
+   The pending slot is promoted into the live slot, the row flips to `active`,
+   and the student sees the new password.
+
+A seat rotated before it ever had a pushed password has an empty live slot: both
+the student and staff are told the password is still being applied rather than
+being handed one the lab would reject, and no reveal is recorded because nothing
+was disclosed.
 
 The bridge talks to two endpoints, both authenticated with a bearer
 `LAB_INTEGRATION_SECRET` (never a query string):
