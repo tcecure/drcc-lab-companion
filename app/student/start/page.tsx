@@ -3,6 +3,8 @@ import { ArrowRight, BookOpenCheck, CircleCheck, IdCard } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/card";
+import { LabCredentialReveal } from "@/components/lab-credential-reveal";
+import { revealMyLabCredentialAction } from "@/lib/actions/lab-credentials";
 import { getProfile, getUserRoles, requireUser } from "@/lib/auth";
 import {
   getStudentCohortAssignment,
@@ -72,6 +74,16 @@ export default async function StudentStartPage() {
               </p>
             </Card>
           </section>
+
+          <Card
+            eyebrow="Lab Access"
+            title={`Your ${identity.podName} lab password`}
+          >
+            <LabCredentialReveal
+              labUsername={identity.labUsername}
+              reveal={revealMyLabCredentialAction}
+            />
+          </Card>
 
           <Card
             eyebrow="Next Step"

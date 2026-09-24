@@ -11,6 +11,7 @@ import {
   HeartHandshake,
   HelpCircle,
   Import,
+  KeyRound,
   LayoutDashboard,
   Mail,
   MessageSquareText,
@@ -85,6 +86,11 @@ const adminGroups: NavigationGroup[] = [
       { href: "/admin/lab-status", icon: Activity, label: "Lab Status" },
       { href: "/admin/labs", icon: ShieldCheck, label: "Lab Capacity" },
       { href: "/admin/labops", icon: Bot, label: "LabOps AI" },
+      {
+        href: "/admin/lab-credentials",
+        icon: KeyRound,
+        label: "Lab Credentials",
+      },
     ],
   },
   {
