@@ -27,6 +27,11 @@ export type LabCredentialSummary = {
   status: LabCredentialRow["status"];
 };
 
+export type LabCredentialReveal = LabCredentialSummary & {
+  password: string | null;
+  rotationPending: boolean;
+};
+
 export type LabCredentialActor = {
   role: "student" | "staff" | "integration";
   userId?: string | null;
@@ -131,6 +136,32 @@ export function decryptSecret(row: {
   );
 }
 
+/** The password the lab currently accepts, or null before the first push. */
+function decryptLive(row: LabCredentialRow) {
+  if (!row.secret_ciphertext || !row.secret_nonce || !row.secret_tag) {
+    return null;
+  }
+
+  return decryptSecret({
+    secret_ciphertext: row.secret_ciphertext,
+    secret_nonce: row.secret_nonce,
+    secret_tag: row.secret_tag,
+  });
+}
+
+/** The staged password a rotation is waiting to push, if there is one. */
+function decryptPending(row: LabCredentialRow) {
+  if (!row.pending_ciphertext || !row.pending_nonce || !row.pending_tag) {
+    return null;
+  }
+
+  return decryptSecret({
+    secret_ciphertext: row.pending_ciphertext,
+    secret_nonce: row.pending_nonce,
+    secret_tag: row.pending_tag,
+  });
+}
+
 export function labCredentialsConfigured() {
   return Boolean(process.env.LAB_CREDENTIAL_ENCRYPTION_KEY?.trim());
 }
@@ -208,28 +239,37 @@ async function readCredential(seatNumber: number) {
 }
 
 /**
- * The plaintext password for one seat, with the access recorded. Callers are
- * responsible for proving the actor is entitled to this seat: staff through
- * requireManager(), a student through their own cohort assignment.
+ * The password the lab currently accepts for one seat, which is deliberately
+ * not the staged one while a rotation is pending: the student keeps working
+ * until AWX has applied the new password. Callers are responsible for proving
+ * the actor is entitled to this seat: staff through requireManager(), a student
+ * through their own cohort assignment.
  */
 export async function revealLabCredential(
   seatNumber: number,
   actor: LabCredentialActor,
-) {
+): Promise<LabCredentialReveal | null> {
   const row = await readCredential(seatNumber);
 
   if (!row) {
     return null;
   }
 
-  const password = decryptSecret(row);
-  await recordCredentialEvent({
-    action: "reveal",
-    actor,
-    seatNumber,
-  });
+  const password = decryptLive(row);
 
-  return { ...toSummary(row), password };
+  if (password !== null) {
+    await recordCredentialEvent({
+      action: "reveal",
+      actor,
+      seatNumber,
+    });
+  }
+
+  return {
+    ...toSummary(row),
+    password,
+    rotationPending: row.status === "pending_push",
+  };
 }
 
 export async function storeLabCredential(input: {
@@ -241,17 +281,38 @@ export async function storeLabCredential(input: {
   const identity = buildStudentLabIdentity(input.seatNumber);
   const supabase = createAdminClient();
   const existing = await readCredential(input.seatNumber);
+  const now = new Date().toISOString();
+  const encrypted = encryptSecret(input.password);
+  const slots = input.markPendingPush
+    ? {
+        pending_ciphertext: encrypted.secret_ciphertext,
+        pending_nonce: encrypted.secret_nonce,
+        pending_rotated_at: now,
+        pending_tag: encrypted.secret_tag,
+        pushed_at: existing?.pushed_at ?? null,
+        secret_ciphertext: existing?.secret_ciphertext ?? null,
+        secret_nonce: existing?.secret_nonce ?? null,
+        secret_tag: existing?.secret_tag ?? null,
+        status: "pending_push" as const,
+      }
+    : {
+        ...encrypted,
+        pending_ciphertext: null,
+        pending_nonce: null,
+        pending_rotated_at: null,
+        pending_tag: null,
+        pushed_at: now,
+        status: "active" as const,
+      };
   const { error } = await supabase.from("lab_pod_credentials").upsert(
     {
-      ...encryptSecret(input.password),
+      ...slots,
       key_version: 1,
       lab_username: identity.labUsername,
       pod_name: identity.podName,
-      pushed_at: input.markPendingPush ? null : new Date().toISOString(),
-      rotated_at: new Date().toISOString(),
+      rotated_at: now,
       rotated_by: input.actor.userId ?? null,
       seat_number: input.seatNumber,
-      status: input.markPendingPush ? "pending_push" : "active",
     },
     { onConflict: "seat_number" },
   );
@@ -303,10 +364,13 @@ export async function listPendingRotations() {
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((row) => ({
-    ...toSummary(row),
-    password: decryptSecret(row),
-  }));
+  return (data ?? []).flatMap((row) => {
+    const password = decryptPending(row);
+
+    return password === null
+      ? []
+      : [{ ...toSummary(row), password, rotationPending: true }];
+  });
 }
 
 export async function markRotationPushed(seatNumbers: number[]) {
@@ -317,16 +381,42 @@ export async function markRotationPushed(seatNumbers: number[]) {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("lab_pod_credentials")
-    .update({ pushed_at: new Date().toISOString(), status: "active" })
+    .select("*")
     .in("seat_number", seatNumbers)
-    .eq("status", "pending_push")
-    .select("seat_number");
+    .eq("status", "pending_push");
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const applied = (data ?? []).map((row) => row.seat_number);
+  const applied: number[] = [];
+
+  for (const row of data ?? []) {
+    const promoted = await supabase
+      .from("lab_pod_credentials")
+      .update({
+        pending_ciphertext: null,
+        pending_nonce: null,
+        pending_rotated_at: null,
+        pending_tag: null,
+        pushed_at: new Date().toISOString(),
+        secret_ciphertext: row.pending_ciphertext,
+        secret_nonce: row.pending_nonce,
+        secret_tag: row.pending_tag,
+        status: "active",
+      })
+      .eq("seat_number", row.seat_number)
+      .eq("status", "pending_push")
+      .select("seat_number");
+
+    if (promoted.error) {
+      throw new Error(promoted.error.message);
+    }
+
+    if (promoted.data?.length) {
+      applied.push(row.seat_number);
+    }
+  }
 
   for (const seatNumber of applied) {
     await recordCredentialEvent({
