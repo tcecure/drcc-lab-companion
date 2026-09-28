@@ -63,7 +63,9 @@ function normalizePods(pods: VerifierProgressPayload["pods"]) {
     );
 
     if (podNumber) {
-      normalized[`pod${podNumber}`] = labs;
+      const key = `pod${podNumber}`;
+
+      normalized[key] = { ...(normalized[key] ?? {}), ...labs };
     }
   }
 

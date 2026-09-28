@@ -57,6 +57,22 @@ describe("parseVerifierProgress", () => {
     expect(parsed.ok && Object.keys(parsed.payload.pods)).toEqual(["pod02"]);
   });
 
+  it("merges labs when one pod arrives under two key forms", () => {
+    const parsed = parseVerifierProgress({
+      ...acPush,
+      pods: {
+        POD02: { "L1.1": { completed: true, reason: null } },
+        "POD02-SRV": { "L1.2": { completed: false, reason: "missing" } },
+      },
+    });
+
+    expect(parsed.ok && Object.keys(parsed.payload.pods)).toEqual(["pod02"]);
+    expect(parsed.ok && Object.keys(parsed.payload.pods.pod02)).toEqual([
+      "L1.1",
+      "L1.2",
+    ]);
+  });
+
   it("rejects an unknown control family", () => {
     const parsed = parseVerifierProgress({ ...acPush, family: "ZZ" });
 
