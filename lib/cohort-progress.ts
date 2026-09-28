@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
+import { fetchPushedCohortSnapshot } from "@/lib/awx-progress-store";
 import { getCohortSchedule, getCurrentCohortNumber } from "@/lib/cohorts";
 import { readServerEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -121,7 +122,12 @@ export function trackerStatusToSnapshot(
   };
 }
 
-/** Reads the live tracker status. Returns null when it cannot be reached. */
+/**
+ * Reads the live results. The training tracker is preferred because it also
+ * carries the course definitions and is what staff see on the tracker itself;
+ * when it cannot be reached the verifiers' own pushes to this application are
+ * used instead. Returns null when neither has anything.
+ */
 export async function fetchLiveCohortSnapshot(
   cohortNumber: number,
   baseUrl?: string,
@@ -138,14 +144,21 @@ export async function fetchLiveCohortSnapshot(
       signal: AbortSignal.timeout(8_000),
     });
 
-    if (!response.ok) {
-      return null;
-    }
+    if (response.ok) {
+      const snapshot = trackerStatusToSnapshot(
+        cohortNumber,
+        await response.json(),
+      );
 
-    return trackerStatusToSnapshot(cohortNumber, await response.json());
+      if (snapshot) {
+        return snapshot;
+      }
+    }
   } catch {
-    return null;
+    // Fall through to the pushed results.
   }
+
+  return fetchPushedCohortSnapshot(cohortNumber);
 }
 
 type SnapshotRow = {
