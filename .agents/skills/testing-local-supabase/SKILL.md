@@ -29,6 +29,16 @@ no portal credentials, or you must not touch production data/users.
   different Supabase project — stale build output can still reference the old project ref.
 - Create local users via the local auth admin API, then insert the matching profile/role rows.
   Never use `SUPABASE_ACCESS_TOKEN` to create or reset a *production* user.
+- **`.env.local` in this repo points at production** (`NEXT_PUBLIC_SUPABASE_URL` is the
+  `kkacbtkacadgsnbylkti.supabase.co` project, with a live secret key). Never `source .env.local`
+  for a local run or a node/vitest script that writes: the writes land in production. Pass the
+  local values explicitly instead — `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:<api port>` plus
+  the local stack's service key, which you can read without the CLI via
+  `docker inspect supabase_studio_drcc-lab-companion --format '{{json .Config.Env}}'`
+  (`SUPABASE_SERVICE_KEY`).
+- A node script that talks to Supabase needs Node ≥ 22 (`/home/ubuntu/.nvm/versions/node/v22.12.0/bin`
+  on PATH); on the default Node 20 `@supabase/supabase-js` fails at construction with
+  `WebSocket is not available`.
 
 ## Verifying an admin page in the browser
 
@@ -113,6 +123,92 @@ When the lead explicitly allows local seeding, generate deterministic rows strai
 - Useful probe: seat a pod that is **absent** from the snapshot. Expected `No data` / `0/0`; watch
   for copy that implies success (a "completed everything" message on a 0/0 row) and for outcome
   summary counts that omit the no-data rows.
+
+## AWX verifier progress push + tracker fallback (`/api/integrations/awx/progress`)
+
+- Needs `AWX_PROGRESS_SECRET` in `.env.local`; auth is **`Authorization: Bearer` only** — a secret in
+  `?secret=`/`?token=` must 401. The route is POST-only (GET/PUT return 405).
+- `public.awx_verifier_progress` is one row per control family (PK `family`), RLS on with no
+  policies, `updated_at` maintained by a trigger. Read it with
+  `docker exec supabase_db_drcc-lab-companion psql -U postgres -d postgres`. An anon-key REST read
+  (`/rest/v1/awx_verifier_progress?select=*`) must return exactly `[]`.
+- Payload gotchas worth asserting: `family` is upper-cased (`"ac"` → `AC`); pod keys are normalized
+  by stripping a `-SRV`/`-DC` suffix (`pod01`, `POD02`, `POD02-SRV` → `pod01`/`pod02`); a missing
+  `reason` is stored as JSON `null`; unknown family / bad `verifiedAt` / non-boolean `completed` /
+  no recognizable pod all 400. Note that if `POD02` **and** `POD02-SRV` appear in the *same* payload
+  the later key overwrites the earlier one rather than merging their labs — push one key per pod.
+- **Making the fallback falsifiable** (this is the whole point of the feature): point
+  `TRAINING_TRACKER_BASE_URL` at a dead port (e.g. `http://127.0.0.1:59999`), `truncate
+  awx_verifier_progress`, **and delete the active cohort's `cohort_progress_snapshots` row** — a
+  stale stored snapshot otherwise masks the fallback. Baseline `/admin/progress` must then read
+  `0/0 labs` with every pod `No data`. Push payloads whose arithmetic you can predict and assert the
+  exact summary/per-family cells (e.g. 3 families over 2 pods → `4/6 labs`, `2/3` per pod, family
+  columns `AC`/`SC`/`IA`), plus the `Last verified` line = max pushed `verifiedAt` in
+  America/New_York. Column order follows the merged course map, not alphabetical — assert the set.
+- For "the tracker still wins", run a tiny fake tracker serving `/api/training-status`
+  (`{pods:{pod01:{...}}, courses:{...}, last_run:...}`) on another port, repoint
+  `TRAINING_TRACKER_BASE_URL`, and **restart the dev server** (`fetchLiveCohortSnapshot` uses
+  `next: { revalidate: 45 }`, so an in-place reload can serve cached tracker data). Tracker-sourced
+  standings show only the tracker's families and its `last_run` as `Last verified`.
+- Frozen-snapshot protection is at the **stored-row** level: `/api/integrations/tracker/snapshot`
+  answers `{"reason":"already_final"}` and leaves `md5(pods::text)` byte-identical. The *active*
+  cohort's page still renders live/fallback numbers even when its own snapshot row is `final`, so
+  assert freezing on a past cohort tab (`Cohort snapshot` heading) plus the DB md5, not on the
+  active cohort's live standings.
+- Repo migrations are additive and a long-lived local stack can be missing an *older* one: this run
+  hit `Could not find the table 'public.student_cohort_ratings'` on `/admin/progress`. Fix by piping
+  the specific file in: `docker exec -i supabase_db_… psql -U postgres -d postgres -v ON_ERROR_STOP=1
+  < supabase/migrations/<file>.sql`. If a page 500s on a missing table, look for an unapplied
+  migration before suspecting the PR.
+- Restarting the dev server inside a single `exec` call that also `pkill`s it tends to kill the new
+  process too; start it with `setsid nohup /tmp/start-prNN.sh >log 2>&1 </dev/null &` in a separate
+  call. Note the log is truncated by each restart, so do secret-leak greps against a log you know
+  spans the requests you care about.
+
+## Lab pod credentials (`/admin/lab-credentials`, `/student/start` Lab Access)
+
+- Requires `LAB_CREDENTIAL_ENCRYPTION_KEY` (`openssl rand -base64 32`, must decode to exactly 32
+  bytes) and `LAB_INTEGRATION_SECRET` in `.env.local`, otherwise the feature errors on purpose.
+- **Shell-exported env beats `.env.local`.** If a previous run exported `LAB_INTEGRATION_SECRET`,
+  the dev server uses that and the bearer route answers 401 even though the file looks right.
+  Start the server from a wrapper that `unset`s the LAB_* vars first, or check
+  `tr '\0' '\n' < /proc/<pid>/environ | grep LAB_`.
+- Tables `lab_pod_credentials` / `lab_credential_events` have RLS on with **no policies**; query
+  them with `docker exec supabase_db_drcc-lab-companion psql -U postgres -d postgres`.
+- There is no "create" UI: the only way a password comes into existence is the staff **Rotate**
+  button, and the only way to learn the plaintext without the UI is the bearer GET on
+  `/api/integrations/lab-credentials/rotations`. That makes a falsifiable chain — the value a
+  student later reveals must be byte-identical to what the bridge GET returned. Generated
+  passwords look like `<Word>-<6 chars>-<2 digits>`, so a stale/other-seat value is obvious.
+- First issuance logs audit action `store`, **not** `rotate`; `rotate` only appears when rotating a
+  seat that already had a credential. Expect all four of `store/rotate/reveal/push` only after
+  rotating an already-issued seat.
+- Tampering test that actually works: patch `window.fetch` to capture the `Next-Action` header the
+  Show button sends, then re-POST the same action id from the same session with body `[1]`
+  (another seat). The student action takes no args and derives the seat server-side, so the
+  response should still be the caller's own seat. Read the response by `console.log`-ing it — the
+  browser tool returns `{}` for promise results.
+- Assert secrecy against the **served HTML** (`fetch(..., {credentials:'include'}).then(r=>r.text())`
+  and check `.includes(password)`), not the DOM.
+- **Two encrypted slots.** `secret_*` is the password the lab currently accepts (live); `pending_*`
+  plus `pending_rotated_at` is a staged rotation. A rotation writes only the pending slot and sets
+  `status='pending_push'`; the bridge ack promotes pending -> live and clears pending. The key
+  continuity scenario to test on any change here: rotate an **already pushed** seat, then check the
+  student page — the student must still see the OLD live password (not a refusal, not the staged
+  one). Prove it by comparing against the distinct staged value the bearer GET returns.
+- Reveal refusals should key off `password === null` (no live slot yet), not merely
+  `status='pending_push'`. A refused reveal must write **no** `reveal` audit row; check with
+  `select count(*) from lab_credential_events where action='reveal' and created_at < (select
+  min(created_at) from lab_credential_events where action='push')`.
+- The pending-slot migration adds a check constraint tying slots to status, so it **fails on legacy
+  `pending_push` rows** that have no pending ciphertext (`check constraint
+  "lab_pod_credentials_slots_match_status" ... is violated by some row`). Locally just truncate
+  `lab_credential_events` and `lab_pod_credentials` and re-apply; on a real database this may need a
+  data backfill first — worth flagging.
+- Reset both tables before a run so every plaintext you assert on was generated by that run.
+- `localhost:3000` vs `127.0.0.1:3000`: Next.js dev-origin protection can block client chunks on one
+  of them (buttons then do nothing) and cookies are per-origin, so keep each actor's session on one
+  origin and use `localhost` for interactive clicking if chunks fail.
 
 ## Devin Secrets Needed
 

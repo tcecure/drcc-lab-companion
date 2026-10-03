@@ -224,12 +224,14 @@ export async function queueUserForCohort(
   source = "manual_entry",
 ) {
   const supabase = createAdminClient();
-  // student_cohort_assignments is unique on user_id, so a cancelled row has to
-  // be re-queued in place rather than inserted alongside.
+  // Assignments are unique per (user, cohort): an earlier cohort of the same
+  // learner is left alone, while a cancelled row for this cohort is re-queued
+  // in place rather than inserted alongside.
   const { data: existing } = await supabase
     .from("student_cohort_assignments")
     .select("*")
     .eq("user_id", userId)
+    .eq("cohort_number", cohortNumber)
     .maybeSingle();
 
   if (existing && existing.status !== "cancelled") {
@@ -296,6 +298,7 @@ export async function activateUserForCurrentCohort(
     .from("student_cohort_assignments")
     .select("*")
     .eq("user_id", userId)
+    .eq("cohort_number", cohortNumber)
     .maybeSingle();
 
   if (existingError) {
@@ -303,7 +306,7 @@ export async function activateUserForCurrentCohort(
   }
 
   if (
-    existing?.cohort_number === cohortNumber &&
+    existing &&
     existing.seat_number !== null &&
     existing.status === "active"
   ) {
@@ -311,24 +314,11 @@ export async function activateUserForCurrentCohort(
   }
 
   let seatNumber =
-    existing?.cohort_number === cohortNumber && existing.status !== "cancelled"
-      ? existing.seat_number
-      : null;
+    existing && existing.status !== "cancelled" ? existing.seat_number : null;
 
   if (seatNumber === null) {
-    const { data: occupied, error: occupiedError } = await supabase
-      .from("student_cohort_assignments")
-      .select("seat_number")
-      .eq("cohort_number", cohortNumber)
-      .neq("status", "cancelled")
-      .not("seat_number", "is", null);
-
-    if (occupiedError) {
-      throw new Error(occupiedError.message);
-    }
-
     seatNumber = getFirstAvailableSeat(
-      (occupied ?? []).map((row) => row.seat_number),
+      await readUnavailableSeats(supabase, cohortNumber),
     );
   }
 
@@ -337,19 +327,14 @@ export async function activateUserForCurrentCohort(
   }
 
   const identity = getLabIdentity(seatNumber);
-  const sameCohort = existing?.cohort_number === cohortNumber;
   const values = {
     source: "silent_active_import",
     cohort_number: cohortNumber,
     seat_number: seatNumber,
     lab_username: identity.labUsername,
     pod_name: identity.podName,
-    access_starts_at:
-      sameCohort && existing
-        ? existing.access_starts_at
-        : schedule.accessStartsAt,
-    access_ends_at:
-      sameCohort && existing ? existing.access_ends_at : schedule.accessEndsAt,
+    access_starts_at: existing?.access_starts_at ?? schedule.accessStartsAt,
+    access_ends_at: existing?.access_ends_at ?? schedule.accessEndsAt,
     notification_send_at: schedule.assignmentRunAt,
     status: "active" as const,
     credential_status: existing?.credential_status ?? "pending_rotation",
@@ -375,6 +360,57 @@ export async function activateUserForCurrentCohort(
   }
 
   return { assignment: data, alreadyActive: false };
+}
+
+/**
+ * Seats a new assignment in `cohortNumber` may not take: every seat already
+ * handed out in that cohort, plus seats a learner from another cohort still
+ * holds. A pod frees up when its previous holder is marked completed, not when
+ * their access window ends, so a cohort that runs long keeps its pods.
+ */
+async function readUnavailableSeats(
+  supabase: ReturnType<typeof createAdminClient>,
+  cohortNumber: number,
+) {
+  const { data, error } = await supabase
+    .from("student_cohort_assignments")
+    .select("seat_number, cohort_number, status")
+    .neq("status", "cancelled")
+    .not("seat_number", "is", null);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return new Set(
+    (data ?? [])
+      .filter(
+        (row) =>
+          row.cohort_number === cohortNumber || row.status !== "completed",
+      )
+      .map((row) => row.seat_number)
+      .filter((seat): seat is number => typeof seat === "number"),
+  );
+}
+
+/**
+ * Closes out a cohort: every seat still open becomes completed, which both
+ * archives the cohort in the queue and releases its pods for the next one.
+ */
+export async function completeCohortAssignments(cohortNumber: number) {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("student_cohort_assignments")
+    .update({ status: "completed" })
+    .eq("cohort_number", cohortNumber)
+    .in("status", ["queued", "notified", "active"])
+    .select("id");
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { completed: (data ?? []).length };
 }
 
 /**
@@ -415,20 +451,9 @@ export async function assignDueCohortSeats(now = new Date()) {
     }
 
     if (!takenSeats.has(row.cohort_number)) {
-      const { data: occupied } = await supabase
-        .from("student_cohort_assignments")
-        .select("seat_number")
-        .eq("cohort_number", row.cohort_number)
-        .neq("status", "cancelled")
-        .not("seat_number", "is", null);
-
       takenSeats.set(
         row.cohort_number,
-        new Set(
-          (occupied ?? [])
-            .map((seat) => seat.seat_number)
-            .filter((seat): seat is number => typeof seat === "number"),
-        ),
+        await readUnavailableSeats(supabase, row.cohort_number),
       );
     }
 
