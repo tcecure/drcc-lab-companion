@@ -90,7 +90,10 @@ When the lead explicitly allows local seeding, generate deterministic rows strai
 - Seats live in `public.student_cohort_assignments`. Constraints to respect when seeding:
   `cohort_number > 0`, `seat_number` 1–20, `pod_name` must match `Pod01`…`Pod20`,
   `status in ('queued','notified','active','completed','cancelled')`, unique `(cohort_number, seat_number)`
-  and unique `user_id` — so one seat per user; re-seat a user by updating/deleting the old row.
+  and (since migration `20261003000000_repeat_cohort_enrollment.sql`) unique `(user_id, cohort_number)`
+  — a learner may hold one seat **per cohort**, so a finished learner can be re-enrolled later. On
+  older local DBs the legacy `student_cohort_assignments_user_id_key` may still exist and will
+  break repeat-enrollment tests; check with `\d student_cohort_assignments` before blaming the code.
 - Each seat needs a matching `public.profiles` row for the name/email to render. There is **no**
   `auth.users` → `profiles` trigger locally: create the auth user via the local Supabase admin API,
   then INSERT the profile row manually with the same `id`.
@@ -123,6 +126,44 @@ When the lead explicitly allows local seeding, generate deterministic rows strai
 - Useful probe: seat a pod that is **absent** from the snapshot. Expected `No data` / `0/0`; watch
   for copy that implies success (a "completed everything" message on a 0/0 row) and for outcome
   summary counts that omit the no-data rows.
+
+## Repeat cohort enrollment + pod reuse (`/admin/import`, `/admin/queue` close-out)
+
+- The flow to exercise: `/admin/import` → "Add up to 10 students" (name + email + **Cohort** select)
+  → `Import manual entries`. Importing into a cohort whose 01:00 assignment time has already passed
+  queues **and** seats immediately, so pick the in-progress cohort to see pods allocated in one step.
+  Banner wording is the cheapest oracle: `Queued 1 students, assigned 1 student numbers now.` on a
+  real insert vs `Queued 0 students, 1 already had a queue entry.` on an idempotent re-import.
+- Make seat allocation **falsifiable before you click**. A seat is unavailable if it belongs to the
+  target cohort OR to any assignment that is not `completed` (any cohort). So seed a mix:
+  completed rows in an old cohort (reusable pods), one `active`/`notified` straggler in an old
+  cohort (pod still held), and the live cohort's own seats. Compute the expected pod by hand first —
+  e.g. held {1,2,3,4,5} → next learner must get **Pod06**; if the code only looked at the target
+  cohort it would hand out Pod03, which is the discriminator.
+- Pod release is driven by the "Close out a cohort" card on `/admin/queue` (`completeCohortAction`,
+  manager-only). The card only lists cohorts that still hold seats. Closing cohort N says
+  `Closed cohort N: X students marked completed and their pods released.`, moves those rows to
+  "Archived students", and the *next* import should then claim the lowest released pod (Pod03 in the
+  example above) — not the next unused one. Note closing a cohort is **not reversible** from the UI;
+  it is the only way to free pods, so seed a cohort you are willing to lose.
+- Repeat-enrollment regression guard: capture `md5(row::text)` of the learner's old completed
+  assignment before the import and re-check after; it must be byte-identical, and
+  `select count(*) ... where user_id=? and cohort_number=?` must stay 1 across a re-import.
+- Emails: `EMAIL_DELIVERY_MODE` defaults to `mock`, so nothing leaves the box; the artifact is
+  `public.email_jobs`. Expect exactly one `student_lab_queue_confirmation` per new enrollment plus
+  one `student_lab_seat_assigned` when the import seats immediately, and assert every recipient
+  domain is a local test domain.
+- `/student/start` picks the newest **unfinished** cohort (`pickStudentAssignment`), so a returning
+  learner must read their new `Student NN` / `PodNN` / `studentNN` everywhere (heading, identity
+  tile, Step 1, Lab Access card title) and never their finished identity.
+- Authz check that works without curl: the student session redirects off `/admin/queue` to
+  `/student`. For the adversarial half, grab the close-out server-action id from the **admin** page's
+  saved HTML (`grep -o 'ACTION_ID_[0-9a-f]*' /tmp/page_html_*.html` — the id that appears **twice**
+  is `completeCohortAction`, once per close-out button), then from the student's own session run a
+  console `fetch('/admin/queue', {method:'POST', headers:{'Next-Action': '<id>'}, body: fd})` with
+  `cohort` in the FormData. A hand-built FormData body returns `500 Error: Connection closed.`
+  (Next cannot decode it) rather than a clean redirect — that is an artifact of the replay, so the
+  real assertion is the DB: no row of that cohort may become `completed`.
 
 ## AWX verifier progress push + tracker fallback (`/api/integrations/awx/progress`)
 
