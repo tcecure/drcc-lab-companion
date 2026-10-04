@@ -1746,7 +1746,7 @@ export type Database = {
           {
             foreignKeyName: "student_cohort_assignments_user_id_fkey";
             columns: ["user_id"];
-            isOneToOne: true;
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
