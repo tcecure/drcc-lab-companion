@@ -461,7 +461,7 @@ export async function registerCohortFile(
 
   if (stored.size > maxUploadBytes) {
     throw await discard(
-      `That file is ${formatBytes(stored.size)}, over the ${formatBytes(maxUploadBytes)} limit.`,
+      `That file is ${stored.size.toLocaleString()} bytes, over the ${formatBytes(maxUploadBytes)} limit.`,
     );
   }
 

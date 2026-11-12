@@ -66,10 +66,12 @@ export function CohortFileUpload({
     }
 
     if (file.size > maxUploadBytes) {
+      // Exact bytes, not a rounded size: one byte over the cap would
+      // otherwise read "50 MB, over the 50 MB limit".
       setError(
-        `That file is ${formatBytes(file.size)}, over the ${formatBytes(
+        `That file is ${file.size.toLocaleString()} bytes, over the ${formatBytes(
           maxUploadBytes,
-        )} limit.`,
+        )} (${maxUploadBytes.toLocaleString()} bytes) limit.`,
       );
 
       return;
