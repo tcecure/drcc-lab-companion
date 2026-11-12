@@ -5,10 +5,8 @@ import { Download } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/card";
 import { SubmitButton } from "@/components/forms";
-import {
-  deleteCohortFileAction,
-  uploadCohortFileAction,
-} from "@/lib/actions/cohort-files";
+import { CohortFileUpload } from "@/components/cohort-file-upload";
+import { deleteCohortFileAction } from "@/lib/actions/cohort-files";
 import { requireManager } from "@/lib/auth";
 import {
   cohortFileFolders,
@@ -17,6 +15,7 @@ import {
   listCohortFiles,
 } from "@/lib/cohort-files";
 import { cohortConfig } from "@/lib/cohorts";
+import { readServerEnv } from "@/lib/env";
 import { formatDateTime } from "@/lib/format";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -83,9 +82,13 @@ export default async function AdminCohortFolderFilesPage({
   const definition = cohortFileFolders.find(
     (entry) => entry.folder === folder,
   )!;
+  const env = readServerEnv();
 
   return (
-    <AppShell roles={roles} title={`Cohort ${cohortNumber} · ${definition.label}`}>
+    <AppShell
+      roles={roles}
+      title={`Cohort ${cohortNumber} · ${definition.label}`}
+    >
       {query.error ? (
         <p className="rounded-lg border border-rose-300/30 bg-rose-400/10 p-3 text-sm text-rose-100">
           {query.error}
@@ -111,7 +114,10 @@ export default async function AdminCohortFolderFilesPage({
         </p>
       </Card>
 
-      <Card eyebrow="Contents" title={`${files.length} file${files.length === 1 ? "" : "s"}`}>
+      <Card
+        eyebrow="Contents"
+        title={`${files.length} file${files.length === 1 ? "" : "s"}`}
+      >
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -170,39 +176,13 @@ export default async function AdminCohortFolderFilesPage({
       </Card>
 
       <Card eyebrow="Add" title="Upload a document">
-        <form action={uploadCohortFileAction} className="grid gap-4">
-          <input name="cohortNumber" type="hidden" value={cohortNumber} />
-          <input name="folder" type="hidden" value={folder} />
-          <input className="input" name="file" required type="file" />
-          {roster.length ? (
-            <label className="grid gap-2 text-sm text-slate-300">
-              Belongs to a student (optional)
-              <select className="input" defaultValue="" name="studentUserId">
-                <option value="">Staff only — no student access</option>
-                {roster.map((entry) => (
-                  <option key={entry.userId} value={entry.userId}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label className="grid gap-2 text-sm text-slate-300">
-            Description (optional)
-            <input
-              className="input"
-              maxLength={500}
-              name="description"
-              type="text"
-            />
-          </label>
-          <p className="text-xs leading-5 text-slate-400">
-            Up to 50 MB. Uploading a file that already exists here replaces it;
-            the previous copy stays in the access log. Naming a student lets
-            that student download it from their own Documents page.
-          </p>
-          <SubmitButton>Upload</SubmitButton>
-        </form>
+        <CohortFileUpload
+          cohortNumber={cohortNumber}
+          folder={folder}
+          students={roster}
+          supabaseKey={env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+          supabaseUrl={env.NEXT_PUBLIC_SUPABASE_URL}
+        />
       </Card>
     </AppShell>
   );

@@ -11,9 +11,11 @@
 -- so both tables carry RLS with no policies: an anon or authenticated key can
 -- reach neither.
 
-insert into storage.buckets (id, name, public)
-values ('cohort-files', 'cohort-files', false)
-on conflict (id) do nothing;
+-- The browser uploads straight into the bucket with a signed ticket, so the
+-- size cap is enforced here as well as in the app.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('cohort-files', 'cohort-files', false, 52428800)
+on conflict (id) do update set file_size_limit = excluded.file_size_limit;
 
 create table if not exists public.cohort_files (
   id uuid primary key default gen_random_uuid(),

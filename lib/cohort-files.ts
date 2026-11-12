@@ -2,13 +2,33 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import {
+  bucketId,
+  cohortFileFolders,
+  cohortFolderName,
+  type CohortFileFolder,
+  type CohortFileRow,
+  formatBytes,
+  maxUploadBytes,
+  sanitizeFileName,
+} from "@/lib/cohort-files-public";
 import { cohortConfig, getCohortSchedule } from "@/lib/cohorts";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Database } from "@/lib/types";
 
-export type CohortFileRow = Database["public"]["Tables"]["cohort_files"]["Row"];
-
-export type CohortFileFolder = CohortFileRow["folder"];
+export type {
+  CohortFileFolder,
+  CohortFileRow,
+} from "@/lib/cohort-files-public";
+export {
+  bucketId,
+  cohortFileFolders,
+  cohortFolderName,
+  folderLabel,
+  formatBytes,
+  isCohortFileFolder,
+  maxUploadBytes,
+  sanitizeFileName,
+} from "@/lib/cohort-files-public";
 
 export type CohortFileActor = {
   role: "student" | "staff" | "integration";
@@ -43,80 +63,6 @@ export type CohortRepositorySummary = {
   startDate: string;
   totalBytes: number;
 };
-
-export const bucketId = "cohort-files";
-
-export const cohortFileFolders: {
-  description: string;
-  folder: CohortFileFolder;
-  label: string;
-}[] = [
-  {
-    folder: "transcripts",
-    label: "Transcripts",
-    description:
-      "Learning reports issued to individual students. Each one is visible to the student it belongs to.",
-  },
-  {
-    folder: "evidence",
-    label: "Lab Evidence",
-    description:
-      "Exports of the artifacts a student produced in their pod, kept with the cohort they belong to.",
-  },
-  {
-    folder: "reports",
-    label: "Cohort Reports",
-    description:
-      "Staff-facing documents about the cohort as a whole: rosters, summaries, funder reporting.",
-  },
-];
-
-export function folderLabel(folder: CohortFileFolder) {
-  return (
-    cohortFileFolders.find((entry) => entry.folder === folder)?.label ?? folder
-  );
-}
-
-export function isCohortFileFolder(value: string): value is CohortFileFolder {
-  return cohortFileFolders.some((entry) => entry.folder === value);
-}
-
-/**
- * A file name safe to use as an object key and as a Content-Disposition value.
- * Path separators are the real hazard: `../` in an uploaded name would
- * otherwise escape the cohort prefix inside the bucket.
- */
-export function sanitizeFileName(name: string) {
-  const base = name.split(/[\\/]/).pop() ?? "";
-  const cleaned = base
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^[-.]+/, "")
-    .slice(0, 160);
-
-  return cleaned.length > 0 ? cleaned : "file";
-}
-
-export function cohortFolderName(cohortNumber: number) {
-  return `cohort-${String(cohortNumber).padStart(2, "0")}`;
-}
-
-export function formatBytes(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
-}
 
 function assertCohortNumber(cohortNumber: number) {
   if (
@@ -182,7 +128,9 @@ function toEntry(
       ? (names.get(row.student_user_id) ?? null)
       : null,
     studentUserId: row.student_user_id,
-    uploadedByName: row.uploaded_by ? (names.get(row.uploaded_by) ?? null) : null,
+    uploadedByName: row.uploaded_by
+      ? (names.get(row.uploaded_by) ?? null)
+      : null,
   };
 }
 
@@ -394,6 +342,172 @@ export async function uploadCohortFile(
   await recordEvent(
     input.cohortNumber,
     id,
+    "upload",
+    actor,
+    `${input.folder}/${fileName}`,
+  );
+
+  return data as CohortFileRow;
+}
+
+/**
+ * A one-shot ticket the browser uses to put the bytes straight into the
+ * bucket. Uploads do not travel through the app: a serverless request body is
+ * capped well below the documented limit, so anything but a small PDF would
+ * fail in production if the action carried the file itself.
+ */
+export async function createCohortFileUploadTicket(
+  input: {
+    cohortNumber: number;
+    fileName: string;
+    folder: CohortFileFolder;
+  },
+  actor: CohortFileActor,
+) {
+  assertCohortNumber(input.cohortNumber);
+
+  const fileName = sanitizeFileName(input.fileName);
+  const fileId = crypto.randomUUID();
+  const storagePath = `${cohortFolderName(input.cohortNumber)}/${input.folder}/${fileId}-${fileName}`;
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.storage
+    .from(bucketId)
+    .createSignedUploadUrl(storagePath);
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Could not start that upload.");
+  }
+
+  return {
+    fileId,
+    fileName,
+    storagePath,
+    token: data.token,
+  };
+}
+
+async function readStoredObject(storagePath: string) {
+  const separator = storagePath.lastIndexOf("/");
+  const supabase = createAdminClient();
+  const { data } = await supabase.storage
+    .from(bucketId)
+    .list(storagePath.slice(0, separator), {
+      limit: 1,
+      search: storagePath.slice(separator + 1),
+    });
+
+  const object = data?.[0];
+
+  if (!object) {
+    return null;
+  }
+
+  return {
+    contentType:
+      (object.metadata?.mimetype as string | undefined) ||
+      "application/octet-stream",
+    size: Number(object.metadata?.size ?? 0),
+  };
+}
+
+export type RegisterCohortFileInput = {
+  checksumSha256?: string | null;
+  cohortNumber: number;
+  description?: string | null;
+  fileId: string;
+  fileName: string;
+  folder: CohortFileFolder;
+  storagePath: string;
+  studentUserId?: string | null;
+};
+
+/**
+ * Records a file the browser has already put in the bucket. The size and type
+ * are read back from storage rather than taken from the client, so the listing
+ * cannot be made to lie about what was uploaded, and an object that breaks the
+ * rules is deleted instead of being left orphaned in the bucket.
+ */
+export async function registerCohortFile(
+  input: RegisterCohortFileInput,
+  actor: CohortFileActor,
+) {
+  assertCohortNumber(input.cohortNumber);
+
+  const fileName = sanitizeFileName(input.fileName);
+  const supabase = createAdminClient();
+
+  if (
+    input.storagePath !==
+    `${cohortFolderName(input.cohortNumber)}/${input.folder}/${input.fileId}-${fileName}`
+  ) {
+    throw new Error("That upload does not belong to this folder.");
+  }
+
+  const stored = await readStoredObject(input.storagePath);
+
+  if (!stored) {
+    throw new Error("The upload did not finish; please try again.");
+  }
+
+  async function discard(reason: string) {
+    await supabase.storage.from(bucketId).remove([input.storagePath]);
+
+    return new Error(reason);
+  }
+
+  if (stored.size === 0) {
+    throw await discard("That file is empty.");
+  }
+
+  if (stored.size > maxUploadBytes) {
+    throw await discard(
+      `That file is ${formatBytes(stored.size)}, over the ${formatBytes(maxUploadBytes)} limit.`,
+    );
+  }
+
+  const { data: superseded } = await supabase
+    .from("cohort_files")
+    .select("id")
+    .eq("cohort_number", input.cohortNumber)
+    .eq("folder", input.folder)
+    .eq("file_name", fileName)
+    .is("deleted_at", null);
+
+  for (const row of superseded ?? []) {
+    await supabase
+      .from("cohort_files")
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by: actor.userId ?? null,
+      })
+      .eq("id", row.id);
+  }
+
+  const { data, error } = await supabase
+    .from("cohort_files")
+    .insert({
+      id: input.fileId,
+      byte_size: stored.size,
+      checksum_sha256: input.checksumSha256 ?? null,
+      cohort_number: input.cohortNumber,
+      content_type: stored.contentType,
+      description: input.description ?? null,
+      file_name: fileName,
+      folder: input.folder,
+      storage_path: input.storagePath,
+      student_user_id: input.studentUserId ?? null,
+      uploaded_by: actor.userId ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    throw await discard(error.message);
+  }
+
+  await recordEvent(
+    input.cohortNumber,
+    input.fileId,
     "upload",
     actor,
     `${input.folder}/${fileName}`,

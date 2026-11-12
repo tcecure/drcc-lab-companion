@@ -109,6 +109,31 @@ vi.mock("@/lib/supabase/admin", () => ({
     from: table,
     storage: {
       from: () => ({
+        createSignedUploadUrl(path: string) {
+          return Promise.resolve({
+            data: { path, token: `token-for-${path}` },
+            error: null,
+          });
+        },
+        list(prefix: string, options: { search: string }) {
+          const path = `${prefix}/${options.search}`;
+          const body = objects.get(path);
+
+          return Promise.resolve({
+            data: body
+              ? [
+                  {
+                    name: options.search,
+                    metadata: {
+                      mimetype: "application/pdf",
+                      size: body.length,
+                    },
+                  },
+                ]
+              : [],
+            error: null,
+          });
+        },
         createSignedUrl(path: string) {
           return Promise.resolve({
             data: { signedUrl: `https://storage.test/${path}?token=abc` },
@@ -135,10 +160,12 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 const {
   createCohortFileDownload,
+  createCohortFileUploadTicket,
   deleteCohortFile,
   listCohortFiles,
   listCohortFolders,
   listStudentFiles,
+  registerCohortFile,
   sanitizeFileName,
   uploadCohortFile,
 } = await import("@/lib/cohort-files");
@@ -240,9 +267,9 @@ describe("who may download", () => {
     const download = await createCohortFileDownload(String(row.id), student);
 
     expect(download?.signedUrl).toContain("token=");
-    expect(
-      events.filter((event) => event.action === "download"),
-    ).toHaveLength(1);
+    expect(events.filter((event) => event.action === "download")).toHaveLength(
+      1,
+    );
   });
 
   it("refuses another student's transcript", async () => {
@@ -267,7 +294,9 @@ describe("who may download", () => {
     });
 
     expect(await createCohortFileDownload(String(row.id), student)).toBeNull();
-    expect(await createCohortFileDownload(String(row.id), staff)).not.toBeNull();
+    expect(
+      await createCohortFileDownload(String(row.id), staff),
+    ).not.toBeNull();
   });
 
   it("shows a student only their own live documents", async () => {
@@ -302,5 +331,121 @@ describe("removal", () => {
     await deleteCohortFile(String(row.id), staff);
 
     expect(await deleteCohortFile(String(row.id), staff)).toBeNull();
+  });
+});
+
+describe("browser uploads", () => {
+  async function browserUpload(
+    body: Buffer,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const ticket = await createCohortFileUploadTicket(
+      {
+        cohortNumber: 6,
+        fileName: "learning-report-marvin-koroma.pdf",
+        folder: "transcripts",
+      },
+      staff,
+    );
+
+    objects.set(ticket.storagePath, body);
+
+    return registerCohortFile(
+      {
+        cohortNumber: 6,
+        fileId: ticket.fileId,
+        fileName: ticket.fileName,
+        folder: "transcripts",
+        storagePath: ticket.storagePath,
+        studentUserId: "student-1",
+        ...overrides,
+      },
+      staff,
+    );
+  }
+
+  it("hands out a ticket under the cohort prefix with a sanitized name", async () => {
+    const ticket = await createCohortFileUploadTicket(
+      { cohortNumber: 6, fileName: "../../etc/passwd", folder: "transcripts" },
+      staff,
+    );
+
+    expect(ticket.storagePath).toBe(
+      `cohort-06/transcripts/${ticket.fileId}-passwd`,
+    );
+    expect(ticket.token).toBeTruthy();
+  });
+
+  it("records the size storage reports, not the size the browser claims", async () => {
+    const row = await browserUpload(Buffer.alloc(2048, 1));
+
+    expect(row.byte_size).toBe(2048);
+    expect(row.content_type).toBe("application/pdf");
+    expect(events.filter((event) => event.action === "upload")).toHaveLength(1);
+  });
+
+  it("replaces a live file of the same name rather than duplicating it", async () => {
+    await browserUpload(Buffer.alloc(16, 1));
+    await browserUpload(Buffer.alloc(32, 1));
+
+    const live = await listCohortFiles(6, "transcripts");
+
+    expect(live).toHaveLength(1);
+    expect(live[0]?.byteSize).toBe(32);
+  });
+
+  it("refuses a path that does not match the registered file", async () => {
+    await expect(
+      browserUpload(Buffer.alloc(16, 1), {
+        storagePath: "cohort-01/reports/someone-elses.pdf",
+      }),
+    ).rejects.toThrow(/does not belong/i);
+  });
+
+  it("refuses and deletes an object over the upload limit", async () => {
+    const ticket = await createCohortFileUploadTicket(
+      { cohortNumber: 6, fileName: "huge.pdf", folder: "transcripts" },
+      staff,
+    );
+
+    objects.set(ticket.storagePath, {
+      length: 50 * 1024 * 1024 + 1,
+    } as unknown as Buffer);
+
+    await expect(
+      registerCohortFile(
+        {
+          cohortNumber: 6,
+          fileId: ticket.fileId,
+          fileName: ticket.fileName,
+          folder: "transcripts",
+          storagePath: ticket.storagePath,
+        },
+        staff,
+      ),
+    ).rejects.toThrow(/over the/i);
+    expect(removed).toContain(ticket.storagePath);
+    expect(files).toHaveLength(0);
+  });
+
+  it("refuses an upload that never reached storage", async () => {
+    const ticket = await createCohortFileUploadTicket(
+      { cohortNumber: 6, fileName: "missing.pdf", folder: "transcripts" },
+      staff,
+    );
+
+    await expect(
+      registerCohortFile(
+        {
+          cohortNumber: 6,
+          fileId: ticket.fileId,
+          fileName: ticket.fileName,
+          folder: "transcripts",
+          storagePath: ticket.storagePath,
+        },
+        staff,
+      ),
+    ).rejects.toThrow(/did not finish/i);
+    expect(files).toHaveLength(0);
   });
 });

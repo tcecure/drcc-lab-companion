@@ -35,6 +35,14 @@ been authorized.
   A link that leaks stops working within the minute.
 - Uploads are capped at 50 MB and the file name is sanitized, so `../` in a
   name cannot escape the cohort prefix.
+- The bytes never travel through the app. The browser asks for a one-shot
+  signed upload ticket, puts the file straight into the private bucket, then
+  calls `registerCohortFileAction` with only the metadata. A request body
+  carrying the file is truncated at 10 MB by the hosting runtime, so an upload
+  through a server action fails well below the documented cap. Registration
+  reads the size and type back from storage rather than trusting the browser,
+  and deletes an object that is empty, oversized or misplaced instead of
+  leaving it orphaned.
 
 Upload, download and removal are each appended to `cohort_file_events` with the
 actor's role and user id. "Who took a copy of this transcript" is answerable.
