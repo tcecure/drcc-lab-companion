@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Download } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
@@ -49,13 +48,15 @@ export default async function StudentDocumentsPage() {
                   <td>{formatBytes(file.byteSize)}</td>
                   <td>{formatDateTime(file.createdAt)}</td>
                   <td>
-                    <Link
+                    {/* A plain anchor: the route answers with a redirect to a
+                        signed URL, which the client router cannot resolve. */}
+                    <a
                       className="inline-flex items-center gap-2 text-cyan-300 hover:underline"
                       href={`/api/files/${file.id}`}
                     >
                       <Download aria-hidden="true" size={16} />
                       Download
-                    </Link>
+                    </a>
                   </td>
                 </tr>
               ))}

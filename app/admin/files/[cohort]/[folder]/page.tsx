@@ -141,13 +141,15 @@ export default async function AdminCohortFolderFilesPage({
                   <td>{formatDateTime(file.createdAt)}</td>
                   <td>{file.uploadedByName ?? "—"}</td>
                   <td>
-                    <Link
+                    {/* A plain anchor: the route answers with a redirect to a
+                        signed URL, which the client router cannot resolve. */}
+                    <a
                       className="inline-flex items-center gap-2 text-cyan-300 hover:underline"
                       href={`/api/files/${file.id}`}
                     >
                       <Download aria-hidden="true" size={16} />
                       Download
-                    </Link>
+                    </a>
                   </td>
                   <td>
                     <form action={deleteCohortFileAction}>
