@@ -666,6 +666,40 @@ export type Database = {
         };
         Relationships: [];
       };
+      awx_verifier_progress: {
+        Row: {
+          family: string;
+          verifier_job_id: number;
+          verified_at: string;
+          received_at: string;
+          pods: Record<
+            string,
+            Record<string, { completed: boolean; reason: string | null }>
+          >;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          family: string;
+          verifier_job_id?: number;
+          verified_at: string;
+          received_at?: string;
+          pods?: Record<
+            string,
+            Record<string, { completed: boolean; reason: string | null }>
+          >;
+        };
+        Update: {
+          verifier_job_id?: number;
+          verified_at?: string;
+          received_at?: string;
+          pods?: Record<
+            string,
+            Record<string, { completed: boolean; reason: string | null }>
+          >;
+        };
+        Relationships: [];
+      };
       student_cohort_ratings: {
         Row: {
           id: string;
