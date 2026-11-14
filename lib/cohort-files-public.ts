@@ -31,12 +31,40 @@ export const cohortFileFolders: {
       "Exports of the artifacts a student produced in their pod, kept with the cohort they belong to.",
   },
   {
+    folder: "certificates",
+    label: "Certificates",
+    description:
+      "Completion certificates issued to individual students, kept apart from their transcripts.",
+  },
+  {
+    folder: "guides",
+    label: "Cohort Guides",
+    description:
+      "The guide and reference PDFs this cohort worked from. Course material, never a record of a student's results.",
+  },
+  {
     folder: "reports",
     label: "Cohort Reports",
     description:
       "Staff-facing documents about the cohort as a whole: rosters, summaries, funder reporting.",
   },
 ];
+
+/**
+ * Folders whose documents belong to one learner. Course material (guides) and
+ * whole-cohort reporting must not be filed against a student: a transcript and
+ * a guide PDF are different kinds of document and are kept in separate
+ * folders so an issued record is never mixed in with the material.
+ */
+export const studentOwnedFolders: CohortFileFolder[] = [
+  "transcripts",
+  "certificates",
+  "evidence",
+];
+
+export function isStudentOwnedFolder(folder: CohortFileFolder) {
+  return studentOwnedFolders.includes(folder);
+}
 
 export function folderLabel(folder: CohortFileFolder) {
   return (

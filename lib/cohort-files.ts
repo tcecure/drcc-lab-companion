@@ -26,6 +26,7 @@ export {
   folderLabel,
   formatBytes,
   isCohortFileFolder,
+  isStudentOwnedFolder,
   maxUploadBytes,
   sanitizeFileName,
 } from "@/lib/cohort-files-public";

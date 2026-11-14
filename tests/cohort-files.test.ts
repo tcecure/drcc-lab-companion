@@ -162,6 +162,7 @@ const {
   createCohortFileDownload,
   createCohortFileUploadTicket,
   deleteCohortFile,
+  isStudentOwnedFolder,
   listCohortFiles,
   listCohortFolders,
   listStudentFiles,
@@ -204,6 +205,27 @@ describe("file names", () => {
   it("keeps a readable name for an ordinary upload", () => {
     expect(sanitizeFileName("Learning Report (Cohort 6).pdf")).toBe(
       "Learning-Report-Cohort-6-.pdf",
+    );
+  });
+});
+
+describe("folders", () => {
+  it("keeps course material out of the folders filed against a learner", () => {
+    expect(isStudentOwnedFolder("transcripts")).toBe(true);
+    expect(isStudentOwnedFolder("certificates")).toBe(true);
+    expect(isStudentOwnedFolder("evidence")).toBe(true);
+    expect(isStudentOwnedFolder("guides")).toBe(false);
+    expect(isStudentOwnedFolder("reports")).toBe(false);
+  });
+
+  it("files a certificate under its own prefix, not with the transcripts", async () => {
+    const row = await transcript({
+      fileName: "completion-certificate.pdf",
+      folder: "certificates",
+    });
+
+    expect(String(row.storage_path)).toMatch(
+      /^cohort-06\/certificates\/[0-9a-f-]+-completion-certificate\.pdf$/,
     );
   });
 });

@@ -753,7 +753,12 @@ export type Database = {
         Row: {
           id: string;
           cohort_number: number;
-          folder: "transcripts" | "evidence" | "reports";
+          folder:
+            | "transcripts"
+            | "certificates"
+            | "evidence"
+            | "guides"
+            | "reports";
           file_name: string;
           storage_path: string;
           content_type: string;
@@ -769,7 +774,12 @@ export type Database = {
         Insert: {
           id?: string;
           cohort_number: number;
-          folder: "transcripts" | "evidence" | "reports";
+          folder:
+            | "transcripts"
+            | "certificates"
+            | "evidence"
+            | "guides"
+            | "reports";
           file_name: string;
           storage_path: string;
           content_type?: string;
