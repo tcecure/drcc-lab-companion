@@ -8,9 +8,12 @@ import {
   cohortFolderName,
   type CohortFileFolder,
   type CohortFileRow,
+  folderLabel,
   formatBytes,
+  isStudentOwnedFolder,
   maxUploadBytes,
   sanitizeFileName,
+  studentOwnedFolders,
 } from "@/lib/cohort-files-public";
 import { cohortConfig, getCohortSchedule } from "@/lib/cohorts";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -26,8 +29,10 @@ export {
   folderLabel,
   formatBytes,
   isCohortFileFolder,
+  isStudentOwnedFolder,
   maxUploadBytes,
   sanitizeFileName,
+  studentOwnedFolders,
 } from "@/lib/cohort-files-public";
 
 export type CohortFileActor = {
@@ -71,6 +76,25 @@ function assertCohortNumber(cohortNumber: number) {
     cohortNumber > cohortConfig.lastCohortNumber
   ) {
     throw new Error(`Cohort ${cohortNumber} is not on the cohort calendar.`);
+  }
+}
+
+/**
+ * Course material and whole-cohort reporting belong to the cohort, not to a
+ * learner. Filing one against a student would put it on their Documents page
+ * beside their own records, so the owner is rejected here rather than only
+ * hidden in the upload form. The browser-upload path makes the same check
+ * once it can discard the stored object, so a refused registration does not
+ * leave the bytes orphaned in the bucket.
+ */
+function assertOwnerAllowed(
+  folder: CohortFileFolder,
+  studentUserId?: string | null,
+) {
+  if (studentUserId && !isStudentOwnedFolder(folder)) {
+    throw new Error(
+      `${folderLabel(folder)} belongs to the cohort and cannot be filed against a student.`,
+    );
   }
 }
 
@@ -247,6 +271,7 @@ export async function listStudentFiles(
     .from("cohort_files")
     .select("*")
     .eq("student_user_id", userId)
+    .in("folder", studentOwnedFolders)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
@@ -279,6 +304,7 @@ export async function uploadCohortFile(
   actor: CohortFileActor,
 ) {
   assertCohortNumber(input.cohortNumber);
+  assertOwnerAllowed(input.folder, input.studentUserId);
 
   if (input.body.length === 0) {
     throw new Error("That file is empty.");
@@ -449,10 +475,32 @@ export async function registerCohortFile(
     throw new Error("The upload did not finish; please try again.");
   }
 
+  const { data: alreadyRecorded } = await supabase
+    .from("cohort_files")
+    .select("id")
+    .eq("storage_path", input.storagePath)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  /**
+   * The object backs a live row already, so this is a replayed registration.
+   * Rejecting before `discard` matters: otherwise a refused retry would take
+   * the bytes of a document that is still listed.
+   */
+  if (alreadyRecorded) {
+    throw new Error("That upload has already been recorded.");
+  }
+
   async function discard(reason: string) {
     await supabase.storage.from(bucketId).remove([input.storagePath]);
 
     return new Error(reason);
+  }
+
+  if (input.studentUserId && !isStudentOwnedFolder(input.folder)) {
+    throw await discard(
+      `${folderLabel(input.folder)} belongs to the cohort and cannot be filed against a student.`,
+    );
   }
 
   if (stored.size === 0) {
@@ -543,7 +591,11 @@ export async function createCohortFileDownload(
     return null;
   }
 
-  if (actor.role === "student" && file.student_user_id !== actor.userId) {
+  if (
+    actor.role === "student" &&
+    (file.student_user_id !== actor.userId ||
+      !isStudentOwnedFolder(file.folder))
+  ) {
     return null;
   }
 

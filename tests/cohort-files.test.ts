@@ -162,6 +162,7 @@ const {
   createCohortFileDownload,
   createCohortFileUploadTicket,
   deleteCohortFile,
+  isStudentOwnedFolder,
   listCohortFiles,
   listCohortFolders,
   listStudentFiles,
@@ -205,6 +206,92 @@ describe("file names", () => {
     expect(sanitizeFileName("Learning Report (Cohort 6).pdf")).toBe(
       "Learning-Report-Cohort-6-.pdf",
     );
+  });
+});
+
+describe("folders", () => {
+  it("keeps course material out of the folders filed against a learner", () => {
+    expect(isStudentOwnedFolder("transcripts")).toBe(true);
+    expect(isStudentOwnedFolder("certificates")).toBe(true);
+    expect(isStudentOwnedFolder("evidence")).toBe(true);
+    expect(isStudentOwnedFolder("guides")).toBe(false);
+    expect(isStudentOwnedFolder("reports")).toBe(false);
+  });
+
+  it("files a certificate under its own prefix, not with the transcripts", async () => {
+    const row = await transcript({
+      fileName: "completion-certificate.pdf",
+      folder: "certificates",
+    });
+
+    expect(String(row.storage_path)).toMatch(
+      /^cohort-06\/certificates\/[0-9a-f-]+-completion-certificate\.pdf$/,
+    );
+  });
+});
+
+describe("folder ownership", () => {
+  it("refuses to file a guide against a student", async () => {
+    await expect(
+      transcript({ fileName: "guide.pdf", folder: "guides" }),
+    ).rejects.toThrow(/cannot be filed against a student/);
+
+    expect(files).toHaveLength(0);
+  });
+
+  it("refuses the same tampering on the browser upload path", async () => {
+    const path =
+      "cohort-06/reports/11111111-1111-1111-1111-111111111111-guide.pdf";
+    objects.set(path, Buffer.from("cohort report"));
+
+    await expect(
+      registerCohortFile(
+        {
+          cohortNumber: 6,
+          fileId: "11111111-1111-1111-1111-111111111111",
+          fileName: "guide.pdf",
+          folder: "reports",
+          storagePath: path,
+          studentUserId: "student-1",
+        },
+        staff,
+      ),
+    ).rejects.toThrow(/cannot be filed against a student/);
+
+    expect(files).toHaveLength(0);
+    expect(removed).toContain(path);
+  });
+
+  it("hides a guide from a student even if a row already names them", async () => {
+    const row = await transcript({ fileName: "guide.pdf" });
+    files[0].folder = "guides";
+
+    expect(await listStudentFiles("student-1")).toHaveLength(0);
+    expect(
+      await createCohortFileDownload(String(row.id), student),
+    ).toBeNull();
+  });
+});
+
+describe("replayed registration", () => {
+  it("never discards the bytes of a document that is still listed", async () => {
+    const row = await transcript({ folder: "reports", studentUserId: null });
+
+    await expect(
+      registerCohortFile(
+        {
+          cohortNumber: 6,
+          fileId: String(row.id),
+          fileName: "learning-report-marvin-koroma.pdf",
+          folder: "reports",
+          storagePath: String(row.storage_path),
+          studentUserId: "student-1",
+        },
+        staff,
+      ),
+    ).rejects.toThrow(/already been recorded/);
+
+    expect(removed).not.toContain(String(row.storage_path));
   });
 });
 

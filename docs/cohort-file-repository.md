@@ -15,8 +15,21 @@ that knows who is asking.
 /student/documents                 the documents filed against that student
 ```
 
-Folders are a fixed list (`transcripts`, `evidence`, `reports`) rather than
-free text: a typo would otherwise create a folder nobody looks in.
+Folders are a fixed list rather than free text: a typo would otherwise create a
+folder nobody looks in.
+
+| Folder | Holds | Filed against a student |
+| --- | --- | --- |
+| `transcripts` | Learning reports issued to a learner | yes |
+| `certificates` | Completion certificates | yes |
+| `evidence` | Exports of a learner's pod artifacts | yes |
+| `guides` | The cohort's guide and reference PDFs | no |
+| `reports` | Whole-cohort staff and funder reporting | no |
+
+Course material and whole-cohort reporting are deliberately kept out of the
+folders that hold a learner's issued records, so a guide PDF can never be
+mistaken for part of someone's transcript. `isStudentOwnedFolder` is what
+decides whether the upload form offers a student to file the document against.
 
 ## Storage and access
 

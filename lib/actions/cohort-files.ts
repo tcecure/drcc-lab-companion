@@ -12,6 +12,7 @@ import {
   isCohortFileFolder,
   registerCohortFile,
 } from "@/lib/cohort-files";
+import type { CohortFileFolder } from "@/lib/cohort-files-public";
 
 const targetSchema = z.object({
   cohortNumber: z.coerce
@@ -80,7 +81,7 @@ export async function prepareCohortFileUploadAction(input: {
         {
           cohortNumber: parsed.data.cohortNumber,
           fileName: parsed.data.fileName,
-          folder: parsed.data.folder as "transcripts" | "evidence" | "reports",
+          folder: parsed.data.folder as CohortFileFolder,
         },
         { role: "staff", userId: actor.id },
       ),
@@ -116,7 +117,7 @@ export async function registerCohortFileAction(input: {
         description: parsed.data.description || null,
         fileId: parsed.data.fileId,
         fileName: parsed.data.fileName,
-        folder: parsed.data.folder as "transcripts" | "evidence" | "reports",
+        folder: parsed.data.folder as CohortFileFolder,
         storagePath: parsed.data.storagePath,
         studentUserId: parsed.data.studentUserId || null,
       },
