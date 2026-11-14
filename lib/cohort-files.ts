@@ -8,9 +8,12 @@ import {
   cohortFolderName,
   type CohortFileFolder,
   type CohortFileRow,
+  folderLabel,
   formatBytes,
+  isStudentOwnedFolder,
   maxUploadBytes,
   sanitizeFileName,
+  studentOwnedFolders,
 } from "@/lib/cohort-files-public";
 import { cohortConfig, getCohortSchedule } from "@/lib/cohorts";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -29,6 +32,7 @@ export {
   isStudentOwnedFolder,
   maxUploadBytes,
   sanitizeFileName,
+  studentOwnedFolders,
 } from "@/lib/cohort-files-public";
 
 export type CohortFileActor = {
@@ -72,6 +76,23 @@ function assertCohortNumber(cohortNumber: number) {
     cohortNumber > cohortConfig.lastCohortNumber
   ) {
     throw new Error(`Cohort ${cohortNumber} is not on the cohort calendar.`);
+  }
+}
+
+/**
+ * Course material and whole-cohort reporting belong to the cohort, not to a
+ * learner. Filing one against a student would put it on their Documents page
+ * beside their own records, so the owner is rejected here rather than only
+ * hidden in the upload form.
+ */
+function assertOwnerAllowed(
+  folder: CohortFileFolder,
+  studentUserId?: string | null,
+) {
+  if (studentUserId && !isStudentOwnedFolder(folder)) {
+    throw new Error(
+      `${folderLabel(folder)} belongs to the cohort and cannot be filed against a student.`,
+    );
   }
 }
 
@@ -248,6 +269,7 @@ export async function listStudentFiles(
     .from("cohort_files")
     .select("*")
     .eq("student_user_id", userId)
+    .in("folder", studentOwnedFolders)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
@@ -280,6 +302,7 @@ export async function uploadCohortFile(
   actor: CohortFileActor,
 ) {
   assertCohortNumber(input.cohortNumber);
+  assertOwnerAllowed(input.folder, input.studentUserId);
 
   if (input.body.length === 0) {
     throw new Error("That file is empty.");
@@ -433,6 +456,7 @@ export async function registerCohortFile(
   actor: CohortFileActor,
 ) {
   assertCohortNumber(input.cohortNumber);
+  assertOwnerAllowed(input.folder, input.studentUserId);
 
   const fileName = sanitizeFileName(input.fileName);
   const supabase = createAdminClient();
@@ -544,7 +568,11 @@ export async function createCohortFileDownload(
     return null;
   }
 
-  if (actor.role === "student" && file.student_user_id !== actor.userId) {
+  if (
+    actor.role === "student" &&
+    (file.student_user_id !== actor.userId ||
+      !isStudentOwnedFolder(file.folder))
+  ) {
     return null;
   }
 

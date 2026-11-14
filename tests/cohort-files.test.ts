@@ -230,6 +230,43 @@ describe("folders", () => {
   });
 });
 
+describe("folder ownership", () => {
+  it("refuses to file a guide against a student", async () => {
+    await expect(
+      transcript({ fileName: "guide.pdf", folder: "guides" }),
+    ).rejects.toThrow(/cannot be filed against a student/);
+
+    expect(files).toHaveLength(0);
+  });
+
+  it("refuses the same tampering on the browser upload path", async () => {
+    await expect(
+      registerCohortFile(
+        {
+          cohortNumber: 6,
+          fileId: "11111111-1111-1111-1111-111111111111",
+          fileName: "guide.pdf",
+          folder: "reports",
+          storagePath:
+            "cohort-06/reports/11111111-1111-1111-1111-111111111111-guide.pdf",
+          studentUserId: "student-1",
+        },
+        staff,
+      ),
+    ).rejects.toThrow(/cannot be filed against a student/);
+  });
+
+  it("hides a guide from a student even if a row already names them", async () => {
+    const row = await transcript({ fileName: "guide.pdf" });
+    files[0].folder = "guides";
+
+    expect(await listStudentFiles("student-1")).toHaveLength(0);
+    expect(
+      await createCohortFileDownload(String(row.id), student),
+    ).toBeNull();
+  });
+});
+
 describe("uploading", () => {
   it("files the bytes under the cohort and folder", async () => {
     const row = await transcript();
