@@ -240,6 +240,10 @@ describe("folder ownership", () => {
   });
 
   it("refuses the same tampering on the browser upload path", async () => {
+    const path =
+      "cohort-06/reports/11111111-1111-1111-1111-111111111111-guide.pdf";
+    objects.set(path, Buffer.from("cohort report"));
+
     await expect(
       registerCohortFile(
         {
@@ -247,13 +251,15 @@ describe("folder ownership", () => {
           fileId: "11111111-1111-1111-1111-111111111111",
           fileName: "guide.pdf",
           folder: "reports",
-          storagePath:
-            "cohort-06/reports/11111111-1111-1111-1111-111111111111-guide.pdf",
+          storagePath: path,
           studentUserId: "student-1",
         },
         staff,
       ),
     ).rejects.toThrow(/cannot be filed against a student/);
+
+    expect(files).toHaveLength(0);
+    expect(removed).toContain(path);
   });
 
   it("hides a guide from a student even if a row already names them", async () => {

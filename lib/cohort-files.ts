@@ -83,7 +83,9 @@ function assertCohortNumber(cohortNumber: number) {
  * Course material and whole-cohort reporting belong to the cohort, not to a
  * learner. Filing one against a student would put it on their Documents page
  * beside their own records, so the owner is rejected here rather than only
- * hidden in the upload form.
+ * hidden in the upload form. The browser-upload path makes the same check
+ * once it can discard the stored object, so a refused registration does not
+ * leave the bytes orphaned in the bucket.
  */
 function assertOwnerAllowed(
   folder: CohortFileFolder,
@@ -456,7 +458,6 @@ export async function registerCohortFile(
   actor: CohortFileActor,
 ) {
   assertCohortNumber(input.cohortNumber);
-  assertOwnerAllowed(input.folder, input.studentUserId);
 
   const fileName = sanitizeFileName(input.fileName);
   const supabase = createAdminClient();
@@ -478,6 +479,12 @@ export async function registerCohortFile(
     await supabase.storage.from(bucketId).remove([input.storagePath]);
 
     return new Error(reason);
+  }
+
+  if (input.studentUserId && !isStudentOwnedFolder(input.folder)) {
+    throw await discard(
+      `${folderLabel(input.folder)} belongs to the cohort and cannot be filed against a student.`,
+    );
   }
 
   if (stored.size === 0) {
