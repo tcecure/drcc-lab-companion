@@ -12,6 +12,7 @@ import {
   cohortFileFolders,
   formatBytes,
   isCohortFileFolder,
+  isStudentOwnedFolder,
   listCohortFiles,
 } from "@/lib/cohort-files";
 import { cohortConfig } from "@/lib/cohorts";
@@ -75,7 +76,7 @@ export default async function AdminCohortFolderFilesPage({
 
   const [files, roster] = await Promise.all([
     listCohortFiles(cohortNumber, folder),
-    folder === "transcripts" || folder === "evidence"
+    isStudentOwnedFolder(folder)
       ? listCohortRoster(cohortNumber)
       : Promise.resolve([]),
   ]);
