@@ -475,6 +475,22 @@ export async function registerCohortFile(
     throw new Error("The upload did not finish; please try again.");
   }
 
+  const { data: alreadyRecorded } = await supabase
+    .from("cohort_files")
+    .select("id")
+    .eq("storage_path", input.storagePath)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  /**
+   * The object backs a live row already, so this is a replayed registration.
+   * Rejecting before `discard` matters: otherwise a refused retry would take
+   * the bytes of a document that is still listed.
+   */
+  if (alreadyRecorded) {
+    throw new Error("That upload has already been recorded.");
+  }
+
   async function discard(reason: string) {
     await supabase.storage.from(bucketId).remove([input.storagePath]);
 

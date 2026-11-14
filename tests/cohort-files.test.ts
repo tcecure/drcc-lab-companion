@@ -273,6 +273,28 @@ describe("folder ownership", () => {
   });
 });
 
+describe("replayed registration", () => {
+  it("never discards the bytes of a document that is still listed", async () => {
+    const row = await transcript({ folder: "reports", studentUserId: null });
+
+    await expect(
+      registerCohortFile(
+        {
+          cohortNumber: 6,
+          fileId: String(row.id),
+          fileName: "learning-report-marvin-koroma.pdf",
+          folder: "reports",
+          storagePath: String(row.storage_path),
+          studentUserId: "student-1",
+        },
+        staff,
+      ),
+    ).rejects.toThrow(/already been recorded/);
+
+    expect(removed).not.toContain(String(row.storage_path));
+  });
+});
+
 describe("uploading", () => {
   it("files the bytes under the cohort and folder", async () => {
     const row = await transcript();
