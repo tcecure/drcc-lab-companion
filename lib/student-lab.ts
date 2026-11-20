@@ -16,11 +16,34 @@ export async function getStudentCohortAssignment(userId: string) {
     .select("*")
     .eq("user_id", userId)
     .neq("status", "cancelled")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("cohort_number", { ascending: false });
 
-  return data;
+  return pickStudentAssignment(data ?? []);
+}
+
+/**
+ * A returning learner has a row per cohort. The one that matters is the lab
+ * they can work in now: an unfinished cohort whose access has opened, then the
+ * nearest cohort still ahead of them, and only then their last finished one.
+ */
+export function pickStudentAssignment<
+  Assignment extends Pick<
+    StudentCohortAssignment,
+    "cohort_number" | "status" | "access_starts_at"
+  >,
+>(assignments: Assignment[], now = new Date()) {
+  const newestFirst = [...assignments].sort(
+    (left, right) => right.cohort_number - left.cohort_number,
+  );
+  const unfinished = newestFirst.filter((row) => row.status !== "completed");
+  const hasOpened = (row: Assignment) => new Date(row.access_starts_at) <= now;
+
+  return (
+    unfinished.find(hasOpened) ??
+    [...unfinished].reverse()[0] ??
+    newestFirst[0] ??
+    null
+  );
 }
 
 export function getStudentLabIdentity(

@@ -3,7 +3,10 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/card";
 import { SubmitButton } from "@/components/forms";
-import { runCohortAssignmentAction } from "@/lib/actions/import-students";
+import {
+  completeCohortAction,
+  runCohortAssignmentAction,
+} from "@/lib/actions/import-students";
 import { requireManager } from "@/lib/auth";
 import { formatCohortStartDate, getCohortSchedule } from "@/lib/cohorts";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -45,6 +48,13 @@ export default async function AdminQueuePage({ searchParams }: QueuePageProps) {
   const archivedCohorts = [
     ...new Set(archived.map((row) => row.cohort_number)),
   ].sort((left, right) => right - left);
+  const openCohorts = [
+    ...new Set(
+      scheduled
+        .filter((row) => row.seat_number !== null)
+        .map((row) => row.cohort_number),
+    ),
+  ].sort((left, right) => left - right);
 
   return (
     <AppShell roles={roles} title="Student Queue">
@@ -68,6 +78,24 @@ export default async function AdminQueuePage({ searchParams }: QueuePageProps) {
           <SubmitButton>Run assignment now</SubmitButton>
         </form>
       </Card>
+      {openCohorts.length ? (
+        <Card eyebrow="Pod Reuse" title="Close out a cohort">
+          <p className="text-sm leading-6 text-slate-300">
+            A pod stays with its student until their cohort is closed out, so a
+            cohort that runs past its window keeps its pods. Closing a cohort
+            marks those students completed, archives them here and frees
+            Pod01-20 for the next cohort to claim.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {openCohorts.map((cohortNumber) => (
+              <form action={completeCohortAction} key={cohortNumber}>
+                <input name="cohort" type="hidden" value={cohortNumber} />
+                <SubmitButton>Close out cohort #{cohortNumber}</SubmitButton>
+              </form>
+            ))}
+          </div>
+        </Card>
+      ) : null}
       <Card eyebrow="Cohort Calendar" title="Scheduled students">
         <div className="table-wrap">
           <table className="data-table">

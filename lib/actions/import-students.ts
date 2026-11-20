@@ -10,6 +10,7 @@ import { runCohortAssignment } from "@/lib/cohort-runner";
 import {
   activateUserForCurrentCohort,
   cohortConfig,
+  completeCohortAssignments,
   formatCohortStartDate,
   getCohortNumberForStartDate,
   getCohortSchedule,
@@ -527,6 +528,38 @@ export async function importManualAction(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/admin/queue");
   redirect(`/admin/import?message=${message(summarize(result))}`);
+}
+
+/**
+ * Closes a cohort out from the admin queue: its seats become completed, which
+ * archives the students and releases their pods to the next cohort.
+ */
+export async function completeCohortAction(formData: FormData) {
+  await requireManager();
+
+  const cohortNumber = Number(formData.get("cohort"));
+  let completed = 0;
+
+  try {
+    if (!Number.isInteger(cohortNumber) || cohortNumber < 1) {
+      throw new Error("Pick a cohort to close out.");
+    }
+
+    const result = await completeCohortAssignments(cohortNumber);
+
+    completed = result.completed;
+  } catch (error) {
+    redirect(
+      `/admin/queue?error=${message(error instanceof Error ? error.message : "Could not close the cohort.")}`,
+    );
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/queue");
+  revalidatePath("/admin/progress");
+  redirect(
+    `/admin/queue?message=${message(`Closed cohort ${cohortNumber}: ${completed} student${completed === 1 ? "" : "s"} marked completed and their pods released.`)}`,
+  );
 }
 
 /** Runs the scheduled student-number assignment on demand from the admin queue. */

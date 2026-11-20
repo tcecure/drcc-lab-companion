@@ -749,6 +749,87 @@ export type Database = {
         };
         Relationships: [];
       };
+      cohort_files: {
+        Row: {
+          id: string;
+          cohort_number: number;
+          folder:
+            | "transcripts"
+            | "certificates"
+            | "evidence"
+            | "guides"
+            | "reports";
+          file_name: string;
+          storage_path: string;
+          content_type: string;
+          byte_size: number;
+          checksum_sha256: string | null;
+          student_user_id: string | null;
+          description: string | null;
+          uploaded_by: string | null;
+          created_at: string;
+          deleted_at: string | null;
+          deleted_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          cohort_number: number;
+          folder:
+            | "transcripts"
+            | "certificates"
+            | "evidence"
+            | "guides"
+            | "reports";
+          file_name: string;
+          storage_path: string;
+          content_type?: string;
+          byte_size: number;
+          checksum_sha256?: string | null;
+          student_user_id?: string | null;
+          description?: string | null;
+          uploaded_by?: string | null;
+          created_at?: string;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+        };
+        Update: {
+          file_name?: string;
+          content_type?: string;
+          byte_size?: number;
+          checksum_sha256?: string | null;
+          student_user_id?: string | null;
+          description?: string | null;
+          deleted_at?: string | null;
+          deleted_by?: string | null;
+        };
+        Relationships: [];
+      };
+      cohort_file_events: {
+        Row: {
+          id: string;
+          file_id: string | null;
+          cohort_number: number;
+          action: "upload" | "download" | "delete";
+          actor_role: "student" | "staff" | "integration";
+          actor_user_id: string | null;
+          detail: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          file_id?: string | null;
+          cohort_number: number;
+          action: "upload" | "download" | "delete";
+          actor_role: "student" | "staff" | "integration";
+          actor_user_id?: string | null;
+          detail?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          detail?: string | null;
+        };
+        Relationships: [];
+      };
       lab_credential_events: {
         Row: {
           id: string;
@@ -1746,7 +1827,7 @@ export type Database = {
           {
             foreignKeyName: "student_cohort_assignments_user_id_fkey";
             columns: ["user_id"];
-            isOneToOne: true;
+            isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },

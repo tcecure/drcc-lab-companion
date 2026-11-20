@@ -7,6 +7,7 @@ import {
   Bot,
   BookOpen,
   ClipboardCheck,
+  FolderOpen,
   GraduationCap,
   HeartHandshake,
   HelpCircle,
@@ -46,6 +47,11 @@ const studentGroups: NavigationGroup[] = [
         href: "/student/training",
         icon: GraduationCap,
         label: "Training Progress",
+      },
+      {
+        href: "/student/documents",
+        icon: FolderOpen,
+        label: "My Documents",
       },
     ],
   },
@@ -103,6 +109,7 @@ const adminGroups: NavigationGroup[] = [
         label: "Support Tickets",
       },
       { href: "/admin/guides", icon: BookOpen, label: "Lab Guides" },
+      { href: "/admin/files", icon: FolderOpen, label: "Cohort Files" },
     ],
   },
   {

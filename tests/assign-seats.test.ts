@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const pendingRows: Record<string, unknown>[] = [];
-const occupiedSeats: { seat_number: number | null }[] = [];
+const occupiedSeats: {
+  seat_number: number | null;
+  cohort_number: number;
+  status: string;
+}[] = [];
 const updates: Record<string, unknown>[] = [];
 
 function selectBuilder(rows: unknown[]) {
@@ -21,7 +25,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
     from: () => ({
       select: (columns: string) =>
-        selectBuilder(columns === "seat_number" ? occupiedSeats : pendingRows),
+        selectBuilder(columns === "*" ? pendingRows : occupiedSeats),
       update: (values: Record<string, unknown>) => {
         updates.push(values);
 
@@ -33,6 +37,17 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 const { assignDueCohortSeats } = await import("@/lib/cohorts");
 const { getCohortSchedule } = await import("@/lib/cohorts");
+
+function seat(
+  seatNumber: number,
+  { cohortNumber = 2, status = "notified" } = {},
+) {
+  return {
+    seat_number: seatNumber,
+    cohort_number: cohortNumber,
+    status,
+  };
+}
 
 function queued(id: string, cohortNumber = 2) {
   return {
@@ -66,7 +81,7 @@ describe("assignDueCohortSeats", () => {
 
   it("hands out the lowest free seats in queue order once due", async () => {
     pendingRows.push(queued("a"), queued("b"));
-    occupiedSeats.push({ seat_number: 1 });
+    occupiedSeats.push(seat(1));
 
     const result = await assignDueCohortSeats(runAt);
 
@@ -87,8 +102,8 @@ describe("assignDueCohortSeats", () => {
   it("skips a student when the cohort is full", async () => {
     pendingRows.push(queued("a"));
 
-    for (let seat = 1; seat <= 20; seat += 1) {
-      occupiedSeats.push({ seat_number: seat });
+    for (let seatNumber = 1; seatNumber <= 20; seatNumber += 1) {
+      occupiedSeats.push(seat(seatNumber));
     }
 
     const result = await assignDueCohortSeats(runAt);
@@ -97,5 +112,23 @@ describe("assignDueCohortSeats", () => {
     expect(result.skipped).toEqual([
       { id: "a", reason: "Cohort 2 has no free seat." },
     ]);
+  });
+
+  it("leaves a pod alone while the previous cohort is still working in it", async () => {
+    pendingRows.push(queued("a"));
+    occupiedSeats.push(seat(1, { cohortNumber: 1, status: "notified" }));
+
+    const result = await assignDueCohortSeats(runAt);
+
+    expect(result.assigned.map((row) => row.podName)).toEqual(["Pod02"]);
+  });
+
+  it("reuses a pod once the previous cohort is closed out", async () => {
+    pendingRows.push(queued("a"));
+    occupiedSeats.push(seat(1, { cohortNumber: 1, status: "completed" }));
+
+    const result = await assignDueCohortSeats(runAt);
+
+    expect(result.assigned.map((row) => row.podName)).toEqual(["Pod01"]);
   });
 });

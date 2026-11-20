@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { replaceGuideTokens } from "@/lib/digital-guides";
-import { buildStudentLabIdentity } from "@/lib/student-lab";
+import {
+  buildStudentLabIdentity,
+  pickStudentAssignment,
+} from "@/lib/student-lab";
 
 describe("buildStudentLabIdentity", () => {
   it("points the student at their own member server, not a domain controller", () => {
@@ -47,5 +50,52 @@ describe("buildStudentLabIdentity", () => {
 
   it("falls back to placeholders without an identity", () => {
     expect(replaceGuideTokens("{{sessionHost}}", null)).toBe("PODXX-SRV");
+  });
+});
+
+describe("pickStudentAssignment", () => {
+  const row = (
+    cohortNumber: number,
+    status: string,
+    accessStartsAt: string,
+  ) => ({
+    cohort_number: cohortNumber,
+    status: status as "queued" | "notified" | "active" | "completed",
+    access_starts_at: accessStartsAt,
+  });
+  const now = new Date("2026-10-01T12:00:00.000Z");
+
+  it("shows a returning learner their new cohort, not the finished one", () => {
+    const picked = pickStudentAssignment(
+      [
+        row(1, "completed", "2026-08-16T04:00:00.000Z"),
+        row(4, "queued", "2026-10-04T04:00:00.000Z"),
+      ],
+      now,
+    );
+
+    expect(picked?.cohort_number).toBe(4);
+  });
+
+  it("keeps a student on the cohort they can work in today", () => {
+    const picked = pickStudentAssignment(
+      [
+        row(3, "notified", "2026-09-20T04:00:00.000Z"),
+        row(5, "queued", "2026-10-18T04:00:00.000Z"),
+      ],
+      now,
+    );
+
+    expect(picked?.cohort_number).toBe(3);
+  });
+
+  it("falls back to the last finished cohort", () => {
+    const picked = pickStudentAssignment(
+      [row(1, "completed", "2026-08-16T04:00:00.000Z")],
+      now,
+    );
+
+    expect(picked?.cohort_number).toBe(1);
+    expect(pickStudentAssignment([], now)).toBeNull();
   });
 });
